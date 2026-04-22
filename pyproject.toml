@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "sdet-agent"
+version = "0.1.0"
+description = "Multi-agent SDET pipeline — requirements analysis to test execution"
+authors = ["M.Zanaty <Zanatii98@live.com>"]
+readme = "README.md"
+packages = [
+    { include = "agent" },
+    { include = "graph" },
+    { include = "api" },
+    { include = "scripts" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+langgraph = ">=0.2"
+langchain-anthropic = "*"
+anthropic = "*"
+openai = "*"
+fastapi = "*"
+uvicorn = { extras = ["standard"], version = "*" }
+asyncpg = "*"
+httpx = "*"
+python-dotenv = "*"
+boto3 = "*"
+pydantic = ">=2.0"
+sendgrid = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+pytest-asyncio = "*"
+httpx = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

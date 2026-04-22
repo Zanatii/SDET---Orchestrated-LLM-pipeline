@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: sdet_agent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sdet_agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    entrypoint: >
+      /bin/sh -c "
+        minio server /data --console-address ':9001' &
+        sleep 5 &&
+        mc alias set local http://localhost:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/sdet-artifacts &&
+        wait
+      "
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.44.0-jammy
+    ports:
+      - "9323:9323"
+    command: ["npx", "playwright", "run-server", "--port", "9323", "--host", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9323/json/version || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  minio_data:
