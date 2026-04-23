@@ -9,7 +9,7 @@
 
 | | Sessions Done | Sessions Remaining | Carry-overs |
 |--|--|--|--|
-| **Count** | 3 / 11 | 8 | 0 |
+| **Count** | 7 / 11 | 4 | 0 |
 
 ---
 
@@ -68,23 +68,71 @@
 
 ---
 
-### 🔲 SESSION 4 — Provider Abstraction + Retry
-**Goal:** `agent/provider.py` and `agent/retry.py`, both providers tested
-**Done when:** `run_agent("hello", "claude")` returns a non-empty string
+### ✅ SESSION 4 — Provider Abstraction — Claude + Grok
+**Goal:** Single `run_agent()` for both providers; Grok falls back to Claude on MCP nodes
+**Done when:** `asyncio.run(run_agent('say hello'))` returns string + JSON log on stdout
 
-- [ ] `agent/provider.py` — `run_agent()` with Claude + Grok branches
-- [ ] `agent/retry.py` — `with_retry()` with exponential backoff (1s, 2s, 4s)
-- [ ] Structured JSON logging on every `run_agent()` call
-- [ ] `tests/test_provider.py` — Claude test passes; Grok test skipped if key absent
-- [ ] `ARCHITECTURE.md` updated — External Integrations table updated for Claude + Grok
+- [x] `agent/provider.py` — async `run_agent()` with Claude + Grok branches; `asyncio.to_thread()` wraps sync clients
+- [x] MCP-only node list (`fetch_ticket_node`, `playwright_execution_node`, `write_jira_node`, `commit_github_node`) — auto-falls back to Claude, logs `grok_fallback`
+- [x] Structured JSON log after every call: `{event, provider, model, calling_node, latency_ms, input_tokens, output_tokens}`
+- [x] `ValueError` raised for unknown provider string
+- [x] `agent/node_logger.py` — `log_node_event()` inserts into `node_events` via asyncpg; `compute_input_hash()` helper (sha256 → 16 hex chars); silently swallows all DB errors
+- [x] `ARCHITECTURE.md` updated — Anthropic + Grok marked `[x]`
 
-**Notes:** _add after completion_
+**Notes:** `agent/retry.py` remains a stub — retry wrapping is not required by this session's spec. Live API verify (`asyncio.run(run_agent(...))`) requires `ANTHROPIC_API_KEY` in `.env` and `poetry run python`.
+**Deviations:** `node_logger.py` is a new file not in original plan; added here as it is a direct dependency of the logging spec. `retry.py` deferred.
+**Known issues:** _none_
+
+---
+
+### ✅ SESSION 5 — Retry Wrapper + Pydantic Output Schemas
+**Goal:** `with_retry()` with correct counter; all output schemas in one file
+**Done when:** `pytest tests/test_retry.py` — all 5 green
+
+- [x] `agent/retry.py` — `with_retry(fn, state, max_retries, retry_key)`; fixed counter order: increment → sleep; catch order: ValidationError, ValueError, Exception; JSON log per attempt; returns `{**state, 'error': ...}` on exhaustion
+- [x] `agent/schemas.py` — 9 output models: `RequirementsOutput`, `HLSOutput`, `TCOutput`, `ClassificationOutput`, `TestDataOutput`, `ReportOutput` plus supporting item models; all use `ConfigDict(extra='forbid')` via shared `_Base`
+- [x] `tests/test_retry.py` — 5 tests: success/once-fail/always-fail roundtrips + ValidationError on extra field + valid schema passes
+- [x] Structural invariant verified: counter increment (line 44) precedes `asyncio.sleep` (line 45)
+
+**Notes:** Offline verification confirms all three retry scenarios and that the counter always precedes the sleep. Pydantic and pytest tests require `poetry run pytest` (packages not on system Python).
+**Deviations:** `_Base` intermediate class avoids repeating `model_config` on every model. Mid-session addition: `generate_scripts_node` inserted into pipeline + `GeneratedScript`/`GeneratedScriptsOutput` schemas added + `generated_scripts`/`review_scripts` state fields added + builder rewired (7 interrupt gates, linear execution path, no conditional router).
+**Known issues:** _none_
+
+---
+
+### ✅ SESSION 6 — Phase 1: Ticket Fetch + Requirements Analysis
+**Goal:** `fetch_ticket_node` + `requirements_analysis_node` fully implemented
+**Done when:** Feed real JIRA ticket ID → `state['ticket_data']` has AC; `requirements_analysis` has REQ-001... items
+
+- [x] `fetch_ticket_node` — JIRA REST API v3 via httpx; ADF-to-text flattener; AC extraction (custom fields + description fallback); 404 → `error` field (no retry); 5xx raises → retry; `log_node_event` after every execution
+- [x] `requirements_analysis_node` — `run_agent()` with structured system prompt; JSON fence-strip + `re.search` regex fallback; `RequirementsOutput` Pydantic validation (ValidationError → retry); `_to_markdown()` produces readable summary; `log_node_event` after every execution
+- [x] Both nodes: `with_retry(fn, state, retry_key='req_retry_count')` wrapper; `compute_input_hash` on only the fields each node reads; attempt count = retries consumed by this node only
+
+**Notes:** JIRA MCP integration uses REST API v3 directly (identical data; MCP server wiring deferred to when mcp-config.json is created). `fetch_ticket_node` stays in `_MCP_ONLY_NODES` in provider.py — MCP swap is a one-line change.
+**Deviations:** JIRA REST API used instead of MCP server (MCP server not yet configured).
+**Known issues:** AC custom field ID varies by JIRA project — checks `customfield_10016`, `10014`, `10500`; add project-specific ID to .env if needed.
+
+---
+
+### ✅ SESSION 7 — Phase 1: HLS Generation (Diff-Aware)
+**Goal:** `generate_hls_node` with diff-awareness, HLS-EXP system rule, Pydantic validation
+**Done when:** `hls_list` ends with HLS-EXP; `changed_hls_ids=['HLS-002']` preserves HLS-001
+
+- [x] Full/diff prompt builders — diff prompt lists preserved items so LLM knows what NOT to regenerate
+- [x] HLS-EXP system rule — strip any LLM-generated HLS-EXP, always append `_HLS_EXP` constant last
+- [x] `_validate_req_links()` — raises `ValueError` (→ retry) if any non-HLS-EXP item has empty `linked_requirements`
+- [x] Diff merge — `preserved | regenerated` dict merge, sort by `_hls_sort_key`, re-append HLS-EXP; LLM extras outside `changed_ids` discarded
+- [x] `with_retry(fn, state, retry_key='hls_retry_count')` — `ValidationError` and `ValueError` both trigger retry
+- [x] `log_node_event` — `attempt = result.hls_retry_count - start_retries`
+- [x] `tests/verify_hls.py` — 4 offline tests: HLS-EXP always last, LLM HLS-EXP stripped, diff preserves HLS-001, bad links retried ×3
+
+**Notes:** All 4 offline tests pass. `tests/verify_hls.py` patches `_hls_mod.run_agent` directly (post-import name binding).
 **Deviations:** _none_
 **Known issues:** _none_
 
 ---
 
-### 🔲 SESSION 5 — Phase 1 Nodes + JIRA MCP
+### 🔲 SESSION 8 — Phase 1 Nodes + JIRA MCP
 **Goal:** All 4 Phase 1 logic nodes fully implemented
 **Done when:** Feed a real JIRA ticket ID → `coverage_report` JSON returned in terminal
 

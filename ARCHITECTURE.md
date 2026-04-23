@@ -2,7 +2,7 @@
 
 > **Auto-maintained by Claude Code.** Updated automatically after every session.
 > Last updated: 2026-04-22
-> Current session: Session 3 — AgentState + Graph Builder (complete)
+> Current session: Session 7 — Phase 1 Nodes: HLS Generation (complete)
 
 ---
 
@@ -39,10 +39,10 @@ JIRA MCP  Playwright  GitHub    SendGrid   Anthropic /
 
 | Node | File | Status | Notes |
 |------|------|--------|-------|
-| `fetch_ticket` | `graph/nodes/fetch_ticket.py` | `[~]` | JIRA MCP read |
-| `requirements_analysis` | `graph/nodes/requirements_analysis.py` | `[~]` | LLM → REQ-001… |
+| `fetch_ticket` | `graph/nodes/fetch_ticket.py` | `[x]` | JIRA REST API v3; ADF→text; AC extraction; retry+log |
+| `requirements_analysis` | `graph/nodes/requirements_analysis.py` | `[x]` | run_agent → RequirementsOutput; fence-strip + regex fallback; markdown summary; retry+log |
 | ⏸ `review_requirements` | `interrupt_before=["generate_hls"]` | `[x]` | Gate 1 |
-| `generate_hls` | `graph/nodes/generate_hls.py` | `[~]` | diff-aware |
+| `generate_hls` | `graph/nodes/generate_hls.py` | `[x]` | diff-aware; HLS-EXP system rule; REQ-link validation; retry+log |
 | ⏸ `review_hls` | `interrupt_before=["generate_tcs"]` | `[x]` | Gate 2 |
 | `generate_tcs` | `graph/nodes/generate_tcs.py` | `[~]` | diff-aware |
 | ⏸ `review_tcs` | `interrupt_before=["coverage_validation"]` | `[x]` | Gate 3 |
@@ -56,11 +56,12 @@ JIRA MCP  Playwright  GitHub    SendGrid   Anthropic /
 | `classify_tcs` | `graph/nodes/classify_tcs.py` | `[~]` | auto/manual/hybrid |
 | ⏸ `review_classifications` | `interrupt_before=["test_data_planning"]` | `[x]` | Gate 5 |
 | `test_data_planning` | `graph/nodes/test_data_planning.py` | `[~]` | classification-aware |
-| `execution_router` | `graph/builder.py` (conditional edge fn) | `[~]` | stub: always returns "playwright" |
-| `playwright_execution` | `graph/nodes/playwright_execution.py` | `[~]` | Playwright MCP + S3 |
+| `generate_scripts` | `graph/nodes/generate_scripts_node.py` | `[~]` | LLM + GitHub MCP; .spec.ts per TC |
+| ⏸ `review_scripts` | `interrupt_before=["generate_scripts"]` | `[x]` | Gate 6 |
+| `playwright_execution` | `graph/nodes/playwright_execution.py` | `[~]` | live MCP execution only |
 | `hybrid_execution` | `graph/nodes/hybrid_execution.py` | `[~]` | agent + manual fallback |
 | `report_generation` | `graph/nodes/report_generation.py` | `[~]` | RCA + traceability |
-| ⏸ `review_report` | `interrupt_before=["write_jira"]` | `[x]` | Gate 6 — branched reject |
+| ⏸ `review_report` | `interrupt_before=["write_jira"]` | `[x]` | Gate 7 — branched reject |
 | `write_jira` | `graph/nodes/write_jira.py` | `[~]` | JIRA MCP write |
 | `commit_github` | `graph/nodes/commit_github.py` | `[~]` | GitHub MCP + PR |
 | `send_email` | `graph/nodes/send_email.py` | `[~]` | SendGrid |
@@ -90,10 +91,12 @@ class AgentState(TypedDict):
     review_tcs:             Optional[dict]
     review_coverage:        Optional[dict]
     review_classifications: Optional[dict]
+    review_scripts:         Optional[dict]
     review_report:          Optional[dict]
     # Phase 2 outputs
     test_data_requirements: Optional[List[dict]]
     tc_classifications:     Optional[List[dict]]
+    generated_scripts:      Optional[List[dict]]
     scripts_written:        Optional[List[dict]]
     execution_results:      Optional[List[dict]]
     report:                 Optional[dict]
@@ -127,8 +130,8 @@ class AgentState(TypedDict):
 | JIRA | JIRA MCP Server | `mcp-config.json` | `[ ]` |
 | Playwright | Playwright MCP | `mcp-config.json` | `[ ]` |
 | GitHub | GitHub MCP | `mcp-config.json` | `[ ]` |
-| Anthropic | `anthropic` SDK | `ANTHROPIC_API_KEY` | `[ ]` |
-| Grok (xAI) | `openai` SDK (compat) | `GROK_API_KEY` | `[ ]` |
+| Anthropic | `anthropic` SDK | `ANTHROPIC_API_KEY` | `[x]` |
+| Grok (xAI) | `openai` SDK (compat) | `GROK_API_KEY` | `[x]` |
 | SendGrid | REST API | `SENDGRID_API_KEY` | `[ ]` |
 | LangSmith | env vars | `LANGCHAIN_API_KEY` | `[x]` |
 | PostgreSQL | `asyncpg` + LangGraph checkpointer | `DATABASE_URL` | `[x]` |

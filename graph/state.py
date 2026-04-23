@@ -19,10 +19,12 @@ class AgentState(TypedDict):
     review_tcs:             Optional[dict]
     review_coverage:        Optional[dict]
     review_classifications: Optional[dict]
+    review_scripts:         Optional[dict]
     review_report:          Optional[dict]
     # Phase 2 outputs
     test_data_requirements: Optional[List[dict]]
     tc_classifications:     Optional[List[dict]]
+    generated_scripts:      Optional[List[dict]]
     scripts_written:        Optional[List[dict]]
     execution_results:      Optional[List[dict]]
     report:                 Optional[dict]

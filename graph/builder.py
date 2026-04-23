@@ -10,6 +10,7 @@ from graph.nodes.coverage_validation import coverage_validation_node
 from graph.nodes.error_node import error_node
 from graph.nodes.fetch_ticket import fetch_ticket_node
 from graph.nodes.generate_hls import generate_hls_node
+from graph.nodes.generate_scripts_node import generate_scripts_node
 from graph.nodes.generate_tcs import generate_tcs_node
 from graph.nodes.hybrid_execution import hybrid_execution_node
 from graph.nodes.playwright_execution import playwright_execution_node
@@ -22,7 +23,7 @@ from graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# Six human-review interrupt gates, declared at compile time.
+# Seven human-review interrupt gates, declared at compile time.
 # The graph pauses BEFORE each node listed here; the API resumes it after
 # the matching review_* field is written into state.
 _INTERRUPT_BEFORE = [
@@ -31,6 +32,7 @@ _INTERRUPT_BEFORE = [
     "coverage_validation", # gate: review_tcs
     "classify_tcs",        # gate: review_coverage
     "test_data_planning",  # gate: review_classifications
+    "generate_scripts",    # gate: review_scripts
     "write_jira",          # gate: review_report
 ]
 
@@ -52,6 +54,7 @@ def _compile(checkpointer):
     builder.add_node("coverage_validation", coverage_validation_node)
     builder.add_node("classify_tcs", classify_tcs_node)
     builder.add_node("test_data_planning", test_data_planning_node)
+    builder.add_node("generate_scripts", generate_scripts_node)
     builder.add_node("playwright_execution", playwright_execution_node)
     builder.add_node("hybrid_execution", hybrid_execution_node)
     builder.add_node("report_generation", report_generation_node)
@@ -71,15 +74,9 @@ def _compile(checkpointer):
     builder.add_edge("coverage_validation", "classify_tcs")
     builder.add_edge("classify_tcs", "test_data_planning")
 
-    # ── Phase 2: execution routing (conditional edge stub) ───────────────
-    builder.add_conditional_edges(
-        "test_data_planning",
-        execution_router,
-        {
-            "playwright": "playwright_execution",
-            "hybrid": "hybrid_execution",   # direct path for manual-only TCs
-        },
-    )
+    # ── Phase 2: script generation → human gate → live execution ────────
+    builder.add_edge("test_data_planning", "generate_scripts")
+    builder.add_edge("generate_scripts", "playwright_execution")
     builder.add_edge("playwright_execution", "hybrid_execution")
 
     # ── Phase 2: reporting + outputs ─────────────────────────────────────

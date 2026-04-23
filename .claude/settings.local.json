@@ -8,7 +8,14 @@
       "Bash(python -m pip show python-dotenv)",
       "Bash(python -m py_compile scripts/seed_db.py scripts/init_observability.py tests/test_db.py)",
       "Bash(python -m py_compile graph/state.py graph/builder.py graph/nodes/fetch_ticket.py graph/nodes/requirements_analysis.py graph/nodes/generate_hls.py graph/nodes/generate_tcs.py graph/nodes/coverage_validation.py graph/nodes/classify_tcs.py graph/nodes/test_data_planning.py graph/nodes/playwright_execution.py graph/nodes/hybrid_execution.py graph/nodes/report_generation.py graph/nodes/write_jira.py graph/nodes/commit_github.py graph/nodes/send_email.py graph/nodes/error_node.py)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(python -m py_compile agent/provider.py agent/node_logger.py)",
+      "Bash(python -m py_compile agent/retry.py agent/schemas.py tests/test_retry.py)",
+      "Bash(python -m py_compile graph/state.py graph/nodes/generate_scripts_node.py graph/builder.py agent/schemas.py api/main.py)",
+      "Bash(python -m py_compile graph/nodes/fetch_ticket.py graph/nodes/requirements_analysis.py)",
+      "Bash(python -m py_compile graph/nodes/generate_hls.py)",
+      "Bash(python tests/verify_hls.py)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\)\")"
     ]
   }
 }
