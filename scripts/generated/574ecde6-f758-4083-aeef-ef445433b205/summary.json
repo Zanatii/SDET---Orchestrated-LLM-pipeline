@@ -1,0 +1,112 @@
+{
+  "run_id": "574ecde6-f758-4083-aeef-ef445433b205",
+  "ticket_id": "SCRUM-5",
+  "generated_at": "2026-04-28T07:28:07.496392+00:00",
+  "scripts": [
+    {
+      "tc_id": "TC-001",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_001.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HeaderPage {\n  constructor(private page: Page) {}\n\n  // Locator: Header container element\n  get header() {\n    return this.page.locator('h"
+    },
+    {
+      "tc_id": "TC-002",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_002.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: Home menu item\n  get homeMenuItem() {\n    return this.page.locator('a', { h"
+    },
+    {
+      "tc_id": "TC-003",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_003.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: Home menu item\n  get homeMenuItem() {\n    return this.page.locator('a[href="
+    },
+    {
+      "tc_id": "TC-004",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_004.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  async navigate() {\n    await this.page.goto('/');\n  }\n\n  async clickServicesMenuItem() "
+    },
+    {
+      "tc_id": "TC-005",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_005.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: News & Updates menu item\n  get newsAndUpdatesMenuItem() {\n    return this.p"
+    },
+    {
+      "tc_id": "TC-006",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_006.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: Contact Us menu item\n  get contactUsMenuItem() {\n    return this.page.locat"
+    },
+    {
+      "tc_id": "TC-007",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_007.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: Language toggle button\n  private languageToggle = this.page.locator('[data-"
+    },
+    {
+      "tc_id": "TC-008",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_008.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: Login menu item\n  get loginMenuItem() {\n    return this.page.locator('a[hre"
+    },
+    {
+      "tc_id": "TC-009",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_009.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass AccessibilityPage {\n  constructor(private page: Page) {}\n\n  getAccessibilityIcon() {\n    // Locator: accessibility icon button\n    return "
+    },
+    {
+      "tc_id": "TC-010",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_010.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePagePOM {\n  constructor(private page: Page) {}\n\n  // Locator: main banner image\n  get mainBannerImage() {\n    return this.page.locator"
+    },
+    {
+      "tc_id": "TC-011",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_011.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePageBanner {\n  constructor(private page: Page) {}\n\n  getBannerTitle() {\n    // Locator: banner title element\n    return this.page.loca"
+    },
+    {
+      "tc_id": "TC-012",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_012.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: main section container\n  get mainSection() {\n    return this.page.locator('"
+    },
+    {
+      "tc_id": "TC-013",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_013.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: Header search bar input\n  getSearchBar() {\n    return this.page.locator('he"
+    },
+    {
+      "tc_id": "TC-014",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_014.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePageSearchBar {\n  constructor(private page: Page) {}\n\n  // Locator: main section container\n  get mainSection() {\n    return this.page."
+    },
+    {
+      "tc_id": "TC-015",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_015.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass MaintenancePage {\n  constructor(private page: Page) {}\n\n  // Locator: Main section container\n  get mainSection() {\n    return this.page.lo"
+    },
+    {
+      "tc_id": "TC-016",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_016.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass MaintenanceMessagePage {\n  constructor(private page: Page) {}\n\n  getMaintenanceMessage() {\n    // Locator: maintenance message container\n "
+    },
+    {
+      "tc_id": "TC-017",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_017.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\nimport { faker } from '@faker-js/faker';\n\nclass DeviceSizePage {\n  constructor(private page: Page) {}\n\n  // Locator: main content wrapper / layou"
+    },
+    {
+      "tc_id": "TC-018",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_018.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePage {\n  constructor(private page: Page) {}\n\n  // Locator: navigation menu container\n  get menuContainer() {\n    return this.page.loca"
+    },
+    {
+      "tc_id": "TC-019",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_019.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass HomePageArabic {\n  constructor(private page: Page) {}\n\n  // Locator: navigation menu container\n  get menuContainer() {\n    return this.pag"
+    },
+    {
+      "tc_id": "TC-020",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_020.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\n\nclass MaintenancePage {\n  constructor(private page: Page) {}\n\n  // Locator: Maintenance message container\n  get maintenanceContainer() {\n    ret"
+    },
+    {
+      "tc_id": "TC-022",
+      "file_path": "scripts\\generated\\574ecde6-f758-4083-aeef-ef445433b205\\tc_022.spec.ts",
+      "content_preview": "import { test, expect, Page } from '@playwright/test';\nimport { faker } from '@faker-js/faker';\n\nclass LoginPage {\n  constructor(private page: Page) {}\n\n  // Locator: username input field\n  private us"
+    }
+  ]
+}

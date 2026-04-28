@@ -9,7 +9,7 @@
 
 | | Sessions Done | Sessions Remaining | Carry-overs |
 |--|--|--|--|
-| **Count** | 7 / 11 | 4 | 0 |
+| **Count** | 8 / 11 | 3 | 0 |
 
 ---
 
@@ -132,22 +132,22 @@
 
 ---
 
-### 🔲 SESSION 8 — Phase 1 Nodes + JIRA MCP
+### ✅ SESSION 8 — Phase 1 Nodes + JIRA MCP
 **Goal:** All 4 Phase 1 logic nodes fully implemented
 **Done when:** Feed a real JIRA ticket ID → `coverage_report` JSON returned in terminal
 
-- [ ] `mcp-config.json` created with JIRA credentials
-- [ ] `graph/nodes/fetch_ticket.py` — JIRA MCP read, populates `ticket_data`
-- [ ] `graph/nodes/requirements_analysis.py` — REQ-001… JSON + readable summary
-- [ ] `graph/nodes/generate_hls.py` — HLS list with diff-awareness + HLS-EXP always included
-- [ ] `graph/nodes/generate_tcs.py` — TC list with diff-awareness + hls_id validation
-- [ ] `graph/nodes/coverage_validation.py` — pure Python coverage report, `phase2_unlocked` flag
-- [ ] JSON parsing uses regex fallback for all LLM responses
-- [ ] All retry keys wired correctly per node
-- [ ] `ARCHITECTURE.md` updated — Phase 1 nodes all marked `[x]`
+- [x] `mcp-config.json` created — `mcp-atlassian` via `uvx`; reads JIRA_URL/JIRA_EMAIL/JIRA_API_TOKEN from env
+- [x] `graph/nodes/fetch_ticket.py` — JIRA REST API v3; ADF→text; AC extraction; 404→error (no retry); 5xx retried; log
+- [x] `graph/nodes/requirements_analysis.py` — run_agent → RequirementsOutput; fence-strip + regex fallback; markdown summary; retry+log
+- [x] `graph/nodes/generate_hls.py` — diff-aware; HLS-EXP system rule; REQ-link validation; retry+log
+- [x] `graph/nodes/generate_tcs.py` — TC list with diff-awareness + hls_id validation
+- [x] `graph/nodes/coverage_validation.py` — pure Python coverage report, `phase2_unlocked` flag; HLS-EXP always exempt from hls_without_tcs
+- [x] JSON parsing uses regex fallback for all LLM responses (fence-strip + `re.search(r'\{.*\}', raw, re.DOTALL)`)
+- [x] Retry keys verified: fetch_ticket→req_retry_count, requirements_analysis→req_retry_count, generate_hls→hls_retry_count, generate_tcs→tc_retry_count
+- [x] `ARCHITECTURE.md` updated — all Phase 1 nodes marked `[x]`
 
-**Notes:** _add after completion_
-**Deviations:** _none_
+**Notes:** fetch_ticket.py and requirements_analysis.py were already complete from Session 6. generate_hls.py was already complete from Session 7. generate_tcs.py and coverage_validation.py completed in the current session pair. Only genuine new artifact this session: mcp-config.json. Later: extracted all node prompts to agent/prompts/ package; retrofitted requirements_analysis/generate_hls/generate_tcs to use prompts module and hardcoded provider. Then added feedback loop infrastructure: feedback_log table in seed_db.py; agent/diff_tracker.py (compute_list_diff, summarise_diff); agent/feedback_retriever.py (get_feedback_examples, log_feedback); feedback_injected field in AgentState; get_feedback_examples() wired into _analyze/_generate closures in all 3 Phase 1 LLM nodes; tests/test_feedback.py (5 tests — diff + DB error handling). Run `poetry run python scripts/seed_db.py` to create feedback_log table.
+**Deviations:** fetch_ticket uses direct JIRA REST API (httpx) rather than MCP server call at runtime — MCP config now exists for future swap; node stays in _MCP_ONLY_NODES in provider.py.
 **Known issues:** _none_
 
 ---
@@ -194,9 +194,9 @@
 **Goal:** Playwright + hybrid execution, S3 artifact upload, GitHub commit
 **Done when:** One TC runs end-to-end: script generated → executed → result in state
 
-- [ ] `graph/nodes/playwright_execution.py` — generates + runs `.spec.ts` via Playwright MCP
-- [ ] `graph/nodes/hybrid_execution.py` — agent-assisted + `pending_manual` interrupt
-- [ ] `scripts/s3_upload.py` — `upload_artifact()` + `generate_presigned_url()`
+- [x] `graph/nodes/playwright_execution.py` — generates + runs `.spec.ts` via Playwright MCP
+- [x] `graph/nodes/hybrid_execution.py` — agent-assisted + `pending_manual` interrupt
+- [x] `scripts/s3_upload.py` — `upload_artifact()` + `generate_presigned_url()`
 - [ ] Screenshots uploaded to `sdet-artifacts/{run_id}/{tc_id}/screenshot.png` on failure
 - [ ] `.spec.ts` files committed to `sdet-agent/{run_id}` branch via GitHub MCP
 - [ ] MinIO works as local S3 equivalent (`S3_ENDPOINT_URL` from env)
@@ -213,7 +213,7 @@
 **Goal:** Full pipeline completes — report generated, JIRA updated, PR opened, email sent
 **Done when:** End-to-end run from ticket ID → email received
 
-- [ ] `graph/nodes/report_generation.py` — unified report with RCA, S3 pre-signed URLs
+- [x] `graph/nodes/report_generation.py` — unified report with RCA, S3 pre-signed URLs
 - [ ] Branched rejection routing: accuracy → regen report / failures → re-execute TCs
 - [ ] `graph/nodes/write_jira.py` — creates JIRA sub-tasks with correct field mapping
 - [ ] Parent ticket QA Status updated (Passed / Failed / In Progress)

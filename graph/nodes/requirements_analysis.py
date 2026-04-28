@@ -8,45 +8,21 @@ from agent.node_logger import compute_input_hash, log_node_event
 from agent.provider import run_agent
 from agent.retry import with_retry
 from agent.schemas import RequirementsOutput
+from agent.prompts import requirements_analysis as prompts
+from agent.feedback_retriever import get_feedback_examples
+from agent.safe_parse_json import safe_parse_json
 from graph.state import AgentState
 
-_SYSTEM = (
-    "You are an expert SDET requirements analyst. "
-    "Extract structured requirements from JIRA ticket content. "
-    "Return ONLY valid JSON — no markdown fences, no explanation."
-)
 
-
-def _build_prompt(ticket_data: dict) -> str:
-    return f"""Analyse this JIRA ticket and extract all requirements.
-
-TICKET DATA:
-Summary:  {ticket_data.get('summary', '')}
-Type:     {ticket_data.get('type', '')}
-Priority: {ticket_data.get('priority', '')}
-
-Description:
-{ticket_data.get('description', '')}
-
-Acceptance Criteria:
-{ticket_data.get('acceptance_criteria', '')}
-
-Return JSON matching this exact schema (no extra keys, no markdown):
-{{
-  "requirements": [
-    {{"id": "REQ-001", "text": "<requirement>", "source": "<description|AC|constraint>", "type": "<functional|non-functional|constraint>"}}
-  ],
-  "ambiguities":    [{{"id": "AMB-001", "description": "<what is unclear>",     "linked_req": "<REQ-id or null>"}}],
-  "contradictions": [{{"id": "CON-001", "description": "<what contradicts what>"}}],
-  "assumptions":    [{{"id": "ASS-001", "description": "<assumption made>"}}]
-}}
-
-Rules:
-- Number sequentially: REQ-001, REQ-002 … AMB-001 … CON-001 … ASS-001 …
-- source  ∈ {{description, AC, constraint}}
-- type    ∈ {{functional, non-functional, constraint}}
-- Return empty lists [] if no items exist in that category
-"""
+def _build_prompt(ticket_data: dict, feedback_examples: str = "") -> str:
+    formatted = (
+        f"Summary:  {ticket_data.get('summary', '')}\n"
+        f"Type:     {ticket_data.get('type', '')}\n"
+        f"Priority: {ticket_data.get('priority', '')}\n\n"
+        f"Description:\n{ticket_data.get('description', '')}\n\n"
+        f"Acceptance Criteria:\n{ticket_data.get('acceptance_criteria', '')}"
+    )
+    return prompts.USER_TEMPLATE.format(ticket_data=formatted, feedback_examples=feedback_examples)
 
 
 def _strip_fences(raw: str) -> str:
@@ -85,18 +61,26 @@ async def requirements_analysis_node(state: AgentState) -> AgentState:
     input_hash = compute_input_hash({"ticket_data": ticket_data})
 
     async def _analyze(s: AgentState) -> AgentState:
+        feedback_examples = await get_feedback_examples(
+            node="requirements_analysis",
+            ticket_type=(s.get("ticket_data") or {}).get("type"),
+        )
         raw = await run_agent(
-            prompt=_build_prompt(s.get("ticket_data") or {}),
-            provider=s["provider"],
-            system=_SYSTEM,
+            prompt=_build_prompt(s.get("ticket_data") or {}, feedback_examples),
+            provider="groq",
+            system=prompts.SYSTEM,
             calling_node="requirements_analysis_node",
         )
-        parsed = json.loads(_strip_fences(raw))
+        parsed = safe_parse_json(raw)
         validated = RequirementsOutput(**parsed)  # ValidationError → retry
         return {
             **s,
             "requirements_analysis": validated.model_dump(),
             "requirements": _to_markdown(validated),
+            "feedback_injected": {
+                **(s.get("feedback_injected") or {}),
+                "requirements_analysis": feedback_examples,
+            },
         }
 
     result = await with_retry(_analyze, state, retry_key="req_retry_count")

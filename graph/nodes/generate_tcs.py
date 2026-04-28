@@ -8,17 +8,15 @@ from agent.node_logger import compute_input_hash, log_node_event
 from agent.provider import run_agent
 from agent.retry import with_retry
 from agent.schemas import TCItem, TCOutput
+from agent.prompts import generate_tcs as prompts
+from agent.feedback_retriever import get_feedback_examples
+from agent.safe_parse_json import safe_parse_json
 from graph.state import AgentState
-
-_SYSTEM = (
-    "You are an expert SDET. Generate detailed test cases from High-Level Scenarios. "
-    "Return ONLY valid JSON — no markdown fences, no explanation."
-)
 
 
 # ── Prompt builders ────────────────────────────────────────────────────────────
 
-def _build_full_prompt(requirements_analysis: dict, hls_list: list) -> str:
+def _build_full_prompt(requirements_analysis: dict, hls_list: list, feedback_examples: str = "") -> str:
     req_lines = "\n".join(
         f"  {r['id']}: {r['text']}"
         for r in requirements_analysis.get("requirements", [])
@@ -26,40 +24,12 @@ def _build_full_prompt(requirements_analysis: dict, hls_list: list) -> str:
     hls_lines = "\n".join(
         f"  {h['id']} ({h.get('type','')}): {h['title']} — links: {h.get('linked_requirements', [])}"
         for h in hls_list if h.get("id") != "HLS-EXP"
+    ) + "\n  HLS-EXP: Exploratory Testing (catch-all for TCs with no specific HLS link)"
+    return prompts.USER_TEMPLATE.format(
+        hls_list=hls_lines,
+        requirements_analysis=req_lines,
+        feedback_examples=feedback_examples,
     )
-    return f"""Generate test cases for ALL High-Level Scenarios.
-
-REQUIREMENTS:
-{req_lines}
-
-HIGH-LEVEL SCENARIOS:
-{hls_lines}
-  HLS-EXP: Exploratory Testing (catch-all for TCs with no specific HLS link)
-
-Return JSON matching this exact schema (no extra keys, no markdown):
-{{
-  "tc_list": [
-    {{
-      "id": "TC-001",
-      "hls_id": "HLS-001",
-      "linked_requirements": ["REQ-001"],
-      "title": "<what is tested>",
-      "preconditions": ["<condition 1>"],
-      "steps": [{{"action": "<do this>", "expected": "<see this>"}}],
-      "priority": "<high|medium|low>",
-      "type": "<positive|negative|edge|exploratory>"
-    }}
-  ]
-}}
-
-Rules:
-- Sequential IDs: TC-001, TC-002, TC-003 …
-- hls_id MUST be one of the HLS IDs listed above
-- Exploratory TCs with no specific HLS: use hls_id="HLS-EXP"
-- priority  ∈ {{high, medium, low}}
-- type      ∈ {{positive, negative, edge, exploratory}}
-- At least 1 step per TC; preconditions may be empty list []
-"""
 
 
 def _build_diff_prompt(
@@ -178,20 +148,24 @@ async def generate_tcs_node(state: AgentState) -> AgentState:
             if diff_mode else []
         )
 
+        feedback_examples = await get_feedback_examples(
+            node="generate_tcs",
+            ticket_type=(s.get("ticket_data") or {}).get("type"),
+        )
         if diff_mode:
             start_num = _max_tc_number(preserved_tcs) + 1
             prompt = _build_diff_prompt(s_req, s_hls, s_changed, preserved_tcs, start_num)
         else:
-            prompt = _build_full_prompt(s_req, s_hls)
+            prompt = _build_full_prompt(s_req, s_hls, feedback_examples)
 
         raw = await run_agent(
             prompt=prompt,
-            provider=s["provider"],
-            system=_SYSTEM,
+            provider="groq",
+            system=prompts.SYSTEM,
             calling_node="generate_tcs_node",
         )
 
-        parsed = json.loads(_strip_fences(raw))
+        parsed = safe_parse_json(raw)
         validated = TCOutput(**parsed)                    # ValidationError → retry
         _validate_hls_ids(validated.tc_list, valid_hls_ids)  # ValueError → retry
 
@@ -202,7 +176,14 @@ async def generate_tcs_node(state: AgentState) -> AgentState:
         else:
             merged = sorted(new_tcs, key=lambda tc: _tc_sort_key(tc["id"]))
 
-        return {**s, "tc_list": merged}
+        return {
+            **s,
+            "tc_list": merged,
+            "feedback_injected": {
+                **(s.get("feedback_injected") or {}),
+                "generate_tcs": feedback_examples,
+            },
+        }
 
     result = await with_retry(_generate, state, retry_key="tc_retry_count")
 

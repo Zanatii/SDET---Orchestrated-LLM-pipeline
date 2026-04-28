@@ -15,7 +15,17 @@
       "Bash(python -m py_compile graph/nodes/fetch_ticket.py graph/nodes/requirements_analysis.py)",
       "Bash(python -m py_compile graph/nodes/generate_hls.py)",
       "Bash(python tests/verify_hls.py)",
-      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\)\")"
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\)\")",
+      "Bash(python scripts/seed_db.py)",
+      "Bash(python -m pytest tests/test_feedback.py tests/test_retry.py -v)",
+      "Bash(where poetry *)",
+      "Bash(py -m pip show asyncpg)",
+      "Read(//c/Users/M.Zanaty/AppData/Local/**)",
+      "Read(//c/Users/M.Zanaty/.poetry/**)",
+      "Read(//c/Users/M.Zanaty/**)",
+      "PowerShell(poetry run *)",
+      "Bash(npx create-next-app@latest ui --typescript --tailwind --app --no-git --no-eslint --import-alias \"@/*\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

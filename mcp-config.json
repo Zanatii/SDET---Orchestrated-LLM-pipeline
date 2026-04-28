@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "jira": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-atlassian", "--transport", "stdio"],
+      "env": {
+        "JIRA_URL": "${JIRA_URL}",
+        "JIRA_USERNAME": "${JIRA_EMAIL}",
+        "JIRA_API_TOKEN": "${JIRA_API_TOKEN}"
+      }
+    }
+  }
+}

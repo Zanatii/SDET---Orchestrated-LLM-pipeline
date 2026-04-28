@@ -40,15 +40,12 @@ async def coverage_validation_node(state: AgentState) -> AgentState:
     hls_covered_by_tcs: set[str] = {tc["hls_id"] for tc in tc_list if tc.get("hls_id")}
 
     exploratory_tc_count = sum(1 for tc in tc_list if tc.get("hls_id") == "HLS-EXP")
-    hls_exp_has_tcs = exploratory_tc_count > 0
 
     hls_without_tcs: list[str] = []
     for h in hls_list:
         hid = h.get("id")
         if hid == "HLS-EXP":
-            if not hls_exp_has_tcs:
-                hls_without_tcs.append(hid)
-            continue
+            continue  # always exempt — catch-all bucket need not have TCs
         if hid not in hls_covered_by_tcs:
             hls_without_tcs.append(hid)
 

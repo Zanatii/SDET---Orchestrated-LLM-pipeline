@@ -4,7 +4,7 @@ from typing import List, Literal, Optional, TypedDict
 class AgentState(TypedDict):
     # Meta
     ticket_id:              str
-    provider:               Literal["claude", "grok"]
+    provider:               Literal["claude", "grok", "groq"]
     run_id:                 str
     # Phase 1 outputs
     ticket_data:            Optional[dict]
@@ -33,7 +33,11 @@ class AgentState(TypedDict):
     hls_retry_count:        int
     tc_retry_count:         int
     report_retry_count:     int
+    # Project-aware script organisation
+    project_name:           Optional[str]
+    feature_slug:           Optional[str]
     # Internal flags
     changed_hls_ids:        Optional[List[str]]
     _auto_approved_reason:  Optional[str]
     error:                  Optional[str]
+    feedback_injected:      Optional[dict]

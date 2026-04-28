@@ -1,8 +1,8 @@
 # ARCHITECTURE.md — SDET Multi-Agent Pipeline
 
 > **Auto-maintained by Claude Code.** Updated automatically after every session.
-> Last updated: 2026-04-22
-> Current session: Session 7 — Phase 1 Nodes: HLS Generation (complete)
+> Last updated: 2026-04-27
+> Current session: Session 18 — Next.js UI: Layout, Stepper, Phase 1 panels
 
 ---
 
@@ -40,31 +40,31 @@ JIRA MCP  Playwright  GitHub    SendGrid   Anthropic /
 | Node | File | Status | Notes |
 |------|------|--------|-------|
 | `fetch_ticket` | `graph/nodes/fetch_ticket.py` | `[x]` | JIRA REST API v3; ADF→text; AC extraction; retry+log |
-| `requirements_analysis` | `graph/nodes/requirements_analysis.py` | `[x]` | run_agent → RequirementsOutput; fence-strip + regex fallback; markdown summary; retry+log |
+| `requirements_analysis` | `graph/nodes/requirements_analysis.py` | `[x]` | provider=claude; prompts.SYSTEM/USER_TEMPLATE; RequirementsOutput; retry+log |
 | ⏸ `review_requirements` | `interrupt_before=["generate_hls"]` | `[x]` | Gate 1 |
-| `generate_hls` | `graph/nodes/generate_hls.py` | `[x]` | diff-aware; HLS-EXP system rule; REQ-link validation; retry+log |
+| `generate_hls` | `graph/nodes/generate_hls.py` | `[x]` | provider=grok; prompts.SYSTEM/USER_TEMPLATE; diff-aware; HLS-EXP system rule; retry+log |
 | ⏸ `review_hls` | `interrupt_before=["generate_tcs"]` | `[x]` | Gate 2 |
-| `generate_tcs` | `graph/nodes/generate_tcs.py` | `[~]` | diff-aware |
+| `generate_tcs` | `graph/nodes/generate_tcs.py` | `[x]` | provider=grok; prompts.SYSTEM/USER_TEMPLATE; diff-aware; hls_id validation; retry+log |
 | ⏸ `review_tcs` | `interrupt_before=["coverage_validation"]` | `[x]` | Gate 3 |
-| `coverage_validation` | `graph/nodes/coverage_validation.py` | `[~]` | pure Python, no LLM |
+| `coverage_validation` | `graph/nodes/coverage_validation.py` | `[x]` | pure Python; all 10 coverage fields; phase2_unlocked gate; HLS-EXP exempt; log |
 | ⏸ `review_coverage` | `interrupt_before=["classify_tcs"]` | `[x]` | Gate 4 — blocks Phase 2 if < 90% |
 
 ### Phase 2 — Execution & Reporting
 
 | Node | File | Status | Notes |
 |------|------|--------|-------|
-| `classify_tcs` | `graph/nodes/classify_tcs.py` | `[~]` | auto/manual/hybrid |
+| `classify_tcs` | `graph/nodes/classify_tcs.py` | `[x]` | provider=state.provider; ClassificationOutput; model_router; feedback; retry+log |
 | ⏸ `review_classifications` | `interrupt_before=["test_data_planning"]` | `[x]` | Gate 5 |
-| `test_data_planning` | `graph/nodes/test_data_planning.py` | `[~]` | classification-aware |
+| `test_data_planning` | `graph/nodes/test_data_planning.py` | `[x]` | provider=state.provider; TestDataOutput; sensitive enforcement; model_router; feedback; retry+log |
 | `generate_scripts` | `graph/nodes/generate_scripts_node.py` | `[~]` | LLM + GitHub MCP; .spec.ts per TC |
 | ⏸ `review_scripts` | `interrupt_before=["generate_scripts"]` | `[x]` | Gate 6 |
-| `playwright_execution` | `graph/nodes/playwright_execution.py` | `[~]` | live MCP execution only |
-| `hybrid_execution` | `graph/nodes/hybrid_execution.py` | `[~]` | agent + manual fallback |
-| `report_generation` | `graph/nodes/report_generation.py` | `[~]` | RCA + traceability |
+| `playwright_execution` | `graph/nodes/playwright_execution.py` | `[x]` | Workflow A: Claude LLM → .spec.ts + GitHub commit; Workflow B: Playwright WS execution + S3 artifact upload |
+| `hybrid_execution` | `graph/nodes/hybrid_execution.py` | `[x]` | LLM confidence pass; single interrupt() for all pending_manual TCs; merges into execution_results |
+| `report_generation` | `graph/nodes/report_generation.py` | `[x]` | provider=state.provider; ReportOutput; RCA per failed TC; presigned S3 URLs; retry_key=report_retry_count max=2; log |
 | ⏸ `review_report` | `interrupt_before=["write_jira"]` | `[x]` | Gate 7 — branched reject |
-| `write_jira` | `graph/nodes/write_jira.py` | `[~]` | JIRA MCP write |
-| `commit_github` | `graph/nodes/commit_github.py` | `[~]` | GitHub MCP + PR |
-| `send_email` | `graph/nodes/send_email.py` | `[~]` | SendGrid |
+| `write_jira` | `graph/nodes/write_jira.py` | `[x]` | idempotent; ADF table; search/create/update subtask; link REQs; parent QA Status; log |
+| `commit_github` | `graph/nodes/commit_github.py` | `[x]` | open PR or update body only; markdown TC table + coverage %; stores pr_url in report; log |
+| `send_email` | `graph/nodes/send_email.py` | `[x]` | SendGrid REST; HTML template; NOTIFICATION_EMAILS; no LLM; log |
 
 ---
 
@@ -119,7 +119,16 @@ class AgentState(TypedDict):
 
 | Method | Path | Purpose | Status |
 |--------|------|---------|--------|
-| — | — | _not yet implemented_ | `[ ]` |
+| `POST` | `/runs/start` | Start pipeline; stream until first interrupt | `[x]` |
+| `POST` | `/runs/{id}/resume` | Approve or reject a gate; resume graph | `[x]` |
+| `GET`  | `/runs/{id}/state` | Full AgentState snapshot (sensitive masked) | `[x]` |
+| `GET`  | `/runs/{id}/coverage` | Return `coverage_report` only | `[x]` |
+| `GET`  | `/health` | asyncpg SELECT 1 + graph loaded check | `[x]` |
+| `DELETE` | `/runs/{id}` | Cancel run; remove from PENDING_GATES | `[x]` |
+| `GET`  | `/feedback/patterns` | Aggregate approval rate, rejection reasons, field counts | `[x]` |
+| `GET`  | `/feedback/runs/{id}` | All feedback rows for a run, grouped by node | `[x]` |
+| `GET`  | `/runs/{id}/pending-gates` | Gate name + seconds_remaining for a waiting run | `[x]` |
+| `POST` | `/runs/{id}/test-data` | Submit manual field values; validates non-empty; masks sensitive in response | `[x]` |
 
 ---
 
@@ -127,7 +136,7 @@ class AgentState(TypedDict):
 
 | Service | How | Config | Status |
 |---------|-----|--------|--------|
-| JIRA | JIRA MCP Server | `mcp-config.json` | `[ ]` |
+| JIRA | JIRA MCP Server (`mcp-atlassian` via `uvx`) | `mcp-config.json` | `[x]` |
 | Playwright | Playwright MCP | `mcp-config.json` | `[ ]` |
 | GitHub | GitHub MCP | `mcp-config.json` | `[ ]` |
 | Anthropic | `anthropic` SDK | `ANTHROPIC_API_KEY` | `[x]` |
@@ -135,7 +144,8 @@ class AgentState(TypedDict):
 | SendGrid | REST API | `SENDGRID_API_KEY` | `[ ]` |
 | LangSmith | env vars | `LANGCHAIN_API_KEY` | `[x]` |
 | PostgreSQL | `asyncpg` + LangGraph checkpointer | `DATABASE_URL` | `[x]` |
-| S3 / MinIO | `boto3` | `S3_ENDPOINT_URL` + keys | `[ ]` |
+| Feedback DB | `feedback_log` table via `asyncpg` | `DATABASE_URL` | `[x]` |
+| S3 / MinIO | `boto3` via `scripts/s3_upload.py` | `S3_ENDPOINT_URL` + keys | `[x]` |
 
 ---
 
@@ -146,6 +156,7 @@ class AgentState(TypedDict):
 | Local DB | PostgreSQL 16 (Docker) | `docker-compose.yml` | `[x]` |
 | Local blob store | MinIO (Docker) | `docker-compose.yml` | `[x]` |
 | Browser automation | Playwright v1.44 (Docker) | `docker-compose.yml` | `[x]` |
+| Next.js UI | Next.js 16 + Tailwind v4 + React 19 | `ui/` | `[~]` |
 | Reverse proxy (prod) | nginx | `docker-compose.prod.yml` | `[ ]` |
 | CI | GitHub Actions | `.github/workflows/ci.yml` | `[ ]` |
 

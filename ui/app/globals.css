@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* ── Design tokens ──────────────────────────────────────────────── */
+@theme {
+  --color-bg:      #0F172A;
+  --color-surface: #1E293B;
+  --color-border:  #334155;
+  --color-teal:    #0D9488;
+  --color-purple:  #7C3AED;
+  --color-text:    #F1F5F9;
+  --color-muted:   #94A3B8;
+  --color-amber:   #F59E0B;
+  --color-red:     #EF4444;
+  --color-green:   #22C55E;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+html, body {
+  height: 100%;
+  background-color: #0F172A;
+  color: #F1F5F9;
+}
+
+/* Pulsing ring for active stepper step */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(13, 148, 136, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0); }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.8s ease-out infinite;
+}

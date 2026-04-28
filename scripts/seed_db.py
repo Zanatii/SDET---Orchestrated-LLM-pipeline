@@ -21,6 +21,23 @@ CREATE TABLE IF NOT EXISTS node_events (
     created_at  TIMESTAMPTZ  DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_node_events_run_node ON node_events (run_id, node);
+
+CREATE TABLE IF NOT EXISTS feedback_log (
+    id              SERIAL PRIMARY KEY,
+    run_id          UUID         NOT NULL,
+    node            TEXT         NOT NULL,
+    ticket_id       TEXT         NOT NULL,
+    ticket_type     TEXT,
+    item_id         TEXT,
+    edit_type       TEXT         NOT NULL,
+    agent_output    JSONB,
+    human_edit      JSONB,
+    diff            JSONB,
+    feedback_text   TEXT,
+    created_at      TIMESTAMPTZ  DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_node_type ON feedback_log (node, ticket_type);
+CREATE INDEX IF NOT EXISTS idx_feedback_ticket ON feedback_log (ticket_id, node);
 """
 
 
@@ -47,7 +64,7 @@ async def main() -> None:
     finally:
         await conn.close()
 
-    print("node_events table ready")
+    print("node_events and feedback_log tables ready")
 
 
 if __name__ == "__main__":
