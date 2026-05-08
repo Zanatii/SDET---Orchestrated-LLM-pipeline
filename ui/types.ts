@@ -37,7 +37,7 @@ export interface ReviewDecision {
 
 export interface AgentState {
   ticket_id: string;
-  provider: "claude" | "grok";
+  provider: "claude" | "groq" | "grok";
   run_id: string;
   ticket_data: Record<string, unknown> | null;
   requirements_analysis: {
@@ -54,6 +54,7 @@ export interface AgentState {
   review_hls: ReviewDecision | null;
   review_tcs: ReviewDecision | null;
   review_coverage: ReviewDecision | null;
+  review_jira: ReviewDecision | null;
   review_classifications: ReviewDecision | null;
   review_scripts: ReviewDecision | null;
   review_report: ReviewDecision | null;
@@ -71,6 +72,8 @@ export interface AgentState {
   _auto_approved_reason: string | null;
   error: string | null;
   feedback_injected: Record<string, string> | null;
+  node_providers: Record<string, string> | null;
+  skip_steps: string[] | null;
 }
 
 export type StepStatus = "pending" | "active" | "approved" | "rejected" | "auto-approved";
@@ -82,22 +85,23 @@ export interface PipelineStep {
   gate: string | null;
   outputKey: keyof AgentState | null;
   feedbackNodeKey: string | null;
+  skipKey: string | null;
 }
 
 export const PIPELINE_STEPS: PipelineStep[] = [
   // Phase 1
-  { id: "fetch_ticket",            label: "Fetch Ticket",          phase: 1, gate: null,                    outputKey: "ticket_data",            feedbackNodeKey: null },
-  { id: "requirements_analysis",   label: "Requirements Analysis",  phase: 1, gate: "review_requirements",   outputKey: "requirements_analysis",   feedbackNodeKey: "requirements_analysis" },
-  { id: "generate_hls",            label: "Generate HLS",           phase: 1, gate: "review_hls",            outputKey: "hls_list",               feedbackNodeKey: "generate_hls" },
-  { id: "generate_tcs",            label: "Generate TCs",           phase: 1, gate: "review_tcs",            outputKey: "tc_list",                feedbackNodeKey: "generate_tcs" },
-  { id: "coverage_validation",     label: "Coverage Validation",    phase: 1, gate: "review_coverage",       outputKey: "coverage_report",        feedbackNodeKey: null },
+  { id: "fetch_ticket",            label: "Fetch Ticket",          phase: 1, gate: null,                    outputKey: "ticket_data",            feedbackNodeKey: null,                    skipKey: null },
+  { id: "requirements_analysis",   label: "Requirements Analysis",  phase: 1, gate: "review_requirements",   outputKey: "requirements_analysis",   feedbackNodeKey: "requirements_analysis", skipKey: null },
+  { id: "generate_hls",            label: "Generate HLS",           phase: 1, gate: "review_hls",            outputKey: "hls_list",               feedbackNodeKey: "generate_hls",          skipKey: null },
+  { id: "generate_tcs",            label: "Generate TCs",           phase: 1, gate: "review_tcs",            outputKey: "tc_list",                feedbackNodeKey: "generate_tcs",          skipKey: null },
+  { id: "coverage_validation",     label: "Coverage Validation",    phase: 1, gate: "review_coverage",       outputKey: "coverage_report",        feedbackNodeKey: null,                    skipKey: null },
+  { id: "write_jira",              label: "Write JIRA",             phase: 1, gate: "review_jira",           outputKey: null,                     feedbackNodeKey: null,                    skipKey: null },
   // Phase 2
-  { id: "classify_tcs",            label: "Classify TCs",           phase: 2, gate: "review_classifications", outputKey: "tc_classifications",     feedbackNodeKey: "classify_tcs" },
-  { id: "test_data_planning",      label: "Test Data Planning",     phase: 2, gate: null,                    outputKey: "test_data_requirements",  feedbackNodeKey: "test_data_planning" },
-  { id: "generate_scripts",        label: "Generate Scripts",       phase: 2, gate: "review_scripts",        outputKey: "scripts_written",        feedbackNodeKey: null },
-  { id: "playwright_execution",    label: "Execute Tests",          phase: 2, gate: null,                    outputKey: "execution_results",      feedbackNodeKey: null },
-  { id: "report_generation",       label: "Report Generation",      phase: 2, gate: "review_report",         outputKey: "report",                 feedbackNodeKey: null },
-  { id: "write_jira",              label: "Write JIRA",             phase: 2, gate: null,                    outputKey: null,                     feedbackNodeKey: null },
-  { id: "commit_github",           label: "GitHub PR",              phase: 2, gate: null,                    outputKey: null,                     feedbackNodeKey: null },
-  { id: "send_email",              label: "Send Email",             phase: 2, gate: null,                    outputKey: null,                     feedbackNodeKey: null },
+  { id: "classify_tcs",            label: "Classify TCs",           phase: 2, gate: "review_classifications", outputKey: "tc_classifications",     feedbackNodeKey: "classify_tcs",          skipKey: null },
+  { id: "test_data_planning",      label: "Test Data Planning",     phase: 2, gate: null,                    outputKey: "test_data_requirements",  feedbackNodeKey: "test_data_planning",    skipKey: "test_data_planning" },
+  { id: "generate_scripts",        label: "Generate Scripts",       phase: 2, gate: "review_scripts",        outputKey: "scripts_written",        feedbackNodeKey: null,                    skipKey: "generate_scripts" },
+  { id: "playwright_execution",    label: "Execute Tests",          phase: 2, gate: null,                    outputKey: "execution_results",      feedbackNodeKey: null,                    skipKey: "execute_tests" },
+  { id: "report_generation",       label: "Report Generation",      phase: 2, gate: "review_report",         outputKey: "report",                 feedbackNodeKey: null,                    skipKey: null },
+  { id: "commit_github",           label: "GitHub PR",              phase: 2, gate: null,                    outputKey: null,                     feedbackNodeKey: null,                    skipKey: null },
+  { id: "send_email",              label: "Send Email",             phase: 2, gate: null,                    outputKey: null,                     feedbackNodeKey: null,                    skipKey: null },
 ];

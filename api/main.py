@@ -5,19 +5,23 @@ import json
 import logging
 import os
 import uuid
+from asyncio import Queue
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
 import asyncpg
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import scripts.init_observability  # noqa — activates LangSmith tracing
 
 from agent.diff_tracker import compute_list_diff
 from agent.feedback_retriever import log_feedback
+from agent.jira_auth import get_jira_headers
 from agent.state_factory import create_initial_state
 from graph.builder import _compile
 
@@ -30,10 +34,10 @@ _NEXT_NODE_TO_GATE: dict[str, str] = {
     "generate_hls":        "review_requirements",
     "generate_tcs":        "review_hls",
     "coverage_validation": "review_tcs",
-    "classify_tcs":        "review_coverage",
+    "write_jira":          "review_jira",
     "test_data_planning":  "review_classifications",
     "generate_scripts":    "review_scripts",
-    "write_jira":          "review_report",
+    "commit_github":       "review_report",
 }
 
 # gate name → as_node arg for aupdate_state when re-running on rejection.
@@ -42,8 +46,8 @@ _GATE_TO_RERUN_AS_NODE: dict[str, str] = {
     "review_requirements":    "fetch_ticket",          # re-runs requirements_analysis
     "review_hls":             "requirements_analysis", # re-runs generate_hls
     "review_tcs":             "generate_hls",          # re-runs generate_tcs
-    "review_coverage":        "generate_tcs",          # re-runs coverage_validation
-    "review_classifications": "coverage_validation",   # re-runs classify_tcs
+    "review_jira":            "coverage_validation",   # re-runs write_jira (re-previews)
+    "review_classifications": "write_jira",            # re-runs classify_tcs
     "review_scripts":         "classify_tcs",          # re-runs test_data_planning
     "review_report":          "hybrid_execution",      # re-runs report_generation
 }
@@ -62,6 +66,7 @@ _GATE_TO_STATE_FIELD: dict[str, str] = {
     "review_hls":             "hls_list",
     "review_tcs":             "tc_list",
     "review_coverage":        "coverage_report",
+    "review_jira":            "tc_list",
     "review_classifications": "tc_classifications",
     "review_scripts":         "test_data_requirements",
     "review_report":          "report",
@@ -73,6 +78,7 @@ _GATE_TO_ID_FIELD: dict[str, str] = {
     "review_hls":             "id",
     "review_tcs":             "id",
     "review_coverage":        "id",
+    "review_jira":            "id",
     "review_classifications": "tc_id",
     "review_scripts":         "tc_id",
     "review_report":          "id",
@@ -84,6 +90,7 @@ _GATE_TIMEOUT_ENV: dict[str, str] = {
     "review_hls":             "GATE_TIMEOUT_HLS",
     "review_tcs":             "GATE_TIMEOUT_TCS",
     "review_coverage":        "GATE_TIMEOUT_COVERAGE",
+    "review_jira":            "GATE_TIMEOUT_COVERAGE",
     "review_classifications": "GATE_TIMEOUT_COVERAGE",
     "review_scripts":         "GATE_TIMEOUT_COVERAGE",
     "review_report":          "GATE_TIMEOUT_REPORT",
@@ -109,6 +116,12 @@ _REQUIRED_SECRETS = [
 # In-memory registry of runs waiting at a human gate.
 # {run_id: {ticket_id, gate_node, started_at, timeout_seconds}}
 PENDING_GATES: dict[str, dict] = {}
+
+# WebSocket connections keyed by run_id.
+websocket_connections: dict[str, list[WebSocket]] = {}
+
+# Queue for node completion + gate events from graph nodes to WebSocket sender.
+notification_queue: Queue = Queue()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -404,6 +417,22 @@ async def _rebuild_pending_gates(graph) -> None:
         logger.info("Restart resilience: restored %d pending gate(s) from checkpoint store", restored)
 
 
+# ── WebSocket helpers ──────────────────────────────────────────────────────────
+
+async def notify_client(run_id: str, data: dict) -> None:
+    """Send a JSON message to all WebSocket clients subscribed to run_id."""
+    connections = websocket_connections.get(run_id, [])
+    dead = []
+    for ws in connections:
+        try:
+            await ws.send_json(data)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in connections:
+            connections.remove(ws)
+
+
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -428,6 +457,16 @@ async def lifespan(app: FastAPI):
     await _rebuild_pending_gates(app.state.graph)
     watcher = asyncio.create_task(_timeout_watcher(app.state.graph))
 
+    async def _notification_worker() -> None:
+        while True:
+            try:
+                rid, message = await notification_queue.get()
+                await notify_client(rid, message)
+            except Exception:
+                pass
+
+    asyncio.create_task(_notification_worker())
+
     try:
         yield
     finally:
@@ -442,12 +481,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SDET Agent API", version="0.1.0", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ── Request bodies ─────────────────────────────────────────────────────────────
 
 class StartRunBody(BaseModel):
     ticket_id: str
     provider: str = "claude"
+    node_providers: Optional[dict] = None
+    skip_steps: Optional[list] = None
+    jira_tc_project_key: Optional[str] = None
+    jira_functional_area: Optional[str] = None
 
 
 class ResumeRunBody(BaseModel):
@@ -456,6 +507,8 @@ class ResumeRunBody(BaseModel):
     feedback: Optional[str] = None
     edits: Optional[dict] = None
     project_name: Optional[str] = None
+    node_providers: Optional[dict] = None
+    jira_selected_tc_ids: Optional[list] = None
 
 
 class TestDataFieldInput(BaseModel):
@@ -478,11 +531,24 @@ async def start_run(body: StartRunBody):
 
     initial_state = create_initial_state(ticket_id=body.ticket_id, run_id=run_id)
     initial_state["provider"] = body.provider  # type: ignore[index]
+    initial_state["node_providers"] = body.node_providers or {}  # type: ignore[index]
+    initial_state["skip_steps"] = body.skip_steps or []  # type: ignore[index]
+    initial_state["jira_tc_project_key"] = body.jira_tc_project_key or ""  # type: ignore[index]
+    initial_state["jira_functional_area"] = body.jira_functional_area or "Dubai Justice Platform"  # type: ignore[index]
+
+    print(f"[START] skip_steps received: {body.skip_steps}")
+    print(f"[START] skip_steps in state: {initial_state['skip_steps']}")
 
     gate, snapshot = await _stream_until_interrupt(app.state.graph, initial_state, config)
 
     if gate:
         PENDING_GATES[run_id] = _pending_gate_entry(body.ticket_id, gate)
+
+    await notify_client(run_id, {
+        "type": "gate_reached",
+        "interrupted_at": gate,
+        "state_snapshot": _mask_sensitive(snapshot),
+    })
 
     return {
         "run_id": run_id,
@@ -505,9 +571,42 @@ async def resume_run(run_id: str, body: ResumeRunBody):
     ticket_type = (current_state.get("ticket_data") or {}).get("type")
     id_field = _GATE_TO_ID_FIELD.get(gate_node, "id")
 
+    # ── Safe node_providers merge (skip already-completed nodes) ─────────────
+    if body.node_providers:
+        completed_nodes: list[str] = []
+        if current_state.get("requirements_analysis"):
+            completed_nodes.append("requirements_analysis_node")
+        if current_state.get("hls_list"):
+            completed_nodes.append("generate_hls_node")
+        if current_state.get("tc_list"):
+            completed_nodes.append("generate_tcs_node")
+        if current_state.get("tc_classifications"):
+            completed_nodes.append("classify_tcs_node")
+        if current_state.get("test_data_requirements"):
+            completed_nodes.append("test_data_planning_node")
+        if current_state.get("scripts_written"):
+            completed_nodes.append("playwright_execution_node")
+        if current_state.get("execution_results"):
+            completed_nodes.append("hybrid_execution_node")
+        if current_state.get("report"):
+            completed_nodes.append("report_generation_node")
+
+        safe_updates = {
+            k: v for k, v in body.node_providers.items()
+            if k not in completed_nodes
+        }
+        merged_node_providers = {
+            **(current_state.get("node_providers") or {}),
+            **safe_updates,
+        }
+        await app.state.graph.aupdate_state(
+            config, {"node_providers": merged_node_providers}
+        )
+        current_state["node_providers"] = merged_node_providers
+
     if body.approved:
         # ── Phase 2 coverage gate guard ──────────────────────────────────
-        if gate_node == "review_coverage":
+        if gate_node == "review_jira":
             cov = current_state.get("coverage_report") or {}
             if not cov.get("phase2_unlocked", True):
                 raise HTTPException(
@@ -519,6 +618,9 @@ async def resume_run(run_id: str, body: ResumeRunBody):
 
         if gate_node == "review_scripts":
             state_updates["project_name"] = body.project_name or "default"
+
+        if gate_node == "review_jira" and body.jira_selected_tc_ids is not None:
+            state_updates["jira_selected_tc_ids"] = body.jira_selected_tc_ids
 
         if body.edits:
             agent_list = _agent_list_for_gate(current_state, gate_node)
@@ -599,6 +701,12 @@ async def resume_run(run_id: str, body: ResumeRunBody):
     PENDING_GATES.pop(run_id, None)
     if gate:
         PENDING_GATES[run_id] = _pending_gate_entry(ticket_id, gate)
+
+    await notify_client(run_id, {
+        "type": "gate_reached",
+        "interrupted_at": gate,
+        "state_snapshot": _mask_sensitive(snapshot_after),
+    })
 
     return {
         "run_id": run_id,
@@ -718,6 +826,43 @@ async def cancel_run(run_id: str):
     return {"run_id": run_id, "status": "cancelled"}
 
 
+# Debug endpoint — inspect skip_steps, node_providers, and current interrupt for a run.
+@app.get("/runs/{run_id}/debug")
+async def debug_run(run_id: str):
+    config = {"configurable": {"thread_id": run_id}}
+    snapshot = await app.state.graph.aget_state(config)
+    if snapshot is None or not snapshot.values:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    state = dict(snapshot.values)
+    return {
+        "skip_steps": state.get("skip_steps"),
+        "node_providers": state.get("node_providers"),
+        "current_interrupted_at": list(snapshot.next) if snapshot.next else None,
+    }
+
+
+# Smoke-test endpoint — connect and receive a single confirmation message.
+@app.websocket("/ws/test")
+async def websocket_test(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_json({"type": "connected", "message": "WebSocket working"})
+    await websocket.close()
+
+
+# Real-time WebSocket stream for a run — delivers node_completed and gate_reached events.
+@app.websocket("/ws/{run_id}")
+async def websocket_endpoint(websocket: WebSocket, run_id: str):
+    await websocket.accept()
+    websocket_connections.setdefault(run_id, []).append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        conns = websocket_connections.get(run_id, [])
+        if websocket in conns:
+            conns.remove(websocket)
+
+
 # Aggregate feedback patterns filtered by node, ticket_type, and time window.
 @app.get("/feedback/patterns")
 async def feedback_patterns(
@@ -819,6 +964,67 @@ async def feedback_patterns(
         "most_deleted_count": most_deleted,
         "most_added_count": most_added,
     }
+
+
+# ── Jira discovery helpers ─────────────────────────────────────────────────────
+
+def _jira_base_url() -> str:
+    return os.getenv("JIRA_URL", "").rstrip("/")
+
+
+# Discover all Jira fields, split into custom and system fields.
+@app.get("/jira/fields")
+async def jira_fields():
+    url = f"{_jira_base_url()}/rest/api/2/field"
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        resp = await client.get(url, headers=get_jira_headers())
+    if resp.status_code == 302:
+        raise HTTPException(status_code=401, detail="Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    fields = resp.json()
+    return {
+        "custom_fields": [
+            {"id": f["id"], "name": f["name"], "schema": f.get("schema")}
+            for f in fields if f["id"].startswith("customfield_")
+        ],
+        "system_fields": [
+            {"id": f["id"], "name": f["name"]}
+            for f in fields if not f["id"].startswith("customfield_")
+        ],
+    }
+
+
+# Discover all Jira issue types.
+@app.get("/jira/issue-types")
+async def jira_issue_types():
+    url = f"{_jira_base_url()}/rest/api/2/issuetype"
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        resp = await client.get(url, headers=get_jira_headers())
+    if resp.status_code == 302:
+        raise HTTPException(status_code=401, detail="Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return [
+        {"id": t["id"], "name": t["name"], "subtask": t.get("subtask", False)}
+        for t in resp.json()
+    ]
+
+
+# Discover all Jira issue link types.
+@app.get("/jira/link-types")
+async def jira_link_types():
+    url = f"{_jira_base_url()}/rest/api/2/issueLinkType"
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        resp = await client.get(url, headers=get_jira_headers())
+    if resp.status_code == 302:
+        raise HTTPException(status_code=401, detail="Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return [
+        {"name": lt["name"], "inward": lt.get("inward", ""), "outward": lt.get("outward", "")}
+        for lt in resp.json().get("issueLinkTypes", [])
+    ]
 
 
 # Return all feedback_log rows for a run, grouped by node.

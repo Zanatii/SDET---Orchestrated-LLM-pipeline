@@ -9,7 +9,7 @@
 
 | | Sessions Done | Sessions Remaining | Carry-overs |
 |--|--|--|--|
-| **Count** | 8 / 11 | 3 | 0 |
+| **Count** | 9 / 11 | 2 | 0 |
 
 ---
 
@@ -227,32 +227,75 @@
 
 ---
 
-### 🔲 SESSION 10 — Next.js UI
+### ✅ SESSION 20 — Pipeline View UI Redesign
+**Goal:** Cleaner, more readable pipeline view with single-phase stepper, read-only navigation, and redesigned action bar
+**Done when:** TypeScript passes clean; all 7 design sections implemented
+
+- [x] **Single-phase stepper**: sidebar shows only current phase steps; phase auto-detected from state; `animate-fade-up` on phase transition; 48px min-height items; progress bar with step counter
+- [x] **Read-only back navigation**: completed steps with viewable gates are clickable; `viewingGate` state in page.tsx; VIEWING badge on stepper item; VIEW ONLY badge + Back button in content header; GateActionBar hidden while browsing; viewingGate reset on currentGate change
+- [x] **Sidebar declutter**: removed provider pills, MCP lock badges, "using X" indicators; clean 48px rows
+- [x] **Color tokens**: `--color-bg` updated to `#060b14`; `--color-surface` updated to `#0f1829`; all panel card backgrounds updated; body gradient updated
+- [x] **Provider selector moved to action bar**: shown only for AI-powered gates; `GateActionBar` receives `provider`, `nodeProviders`, `onNodeProviderChange` props
+- [x] **Action bar redesign**: 64px `h-16` action row; labeled approve buttons per gate (`Approve Requirements`, `Approve Scenarios`, etc.); reject panel expands above action row (not replacing it); edit toggle preserved
+- [x] **Content header redesign**: phase badge (`PHASE 1 · ANALYSIS` / `PHASE 2 · AUTOMATION`); step counter; ticket badge removed; uses `displayGateMeta` for view-only browsing
+- [x] TypeScript: 0 errors (`tsc --noEmit` exit 0)
+- [x] `ARCHITECTURE.md` updated
+
+**Notes:** Provider pills were removed from Stepper entirely — provider selection now happens in GateActionBar before approving AI-node gates. The `completedNodes` prop is kept on Stepper signature for future use but no longer used for per-step rendering. `gateMeta` kept as a local for any future use; `displayGateMeta` drives the header.
+**Deviations:** _none_
+**Known issues:** _none_
+
+---
+
+### ✅ SESSION 21 — Pipeline Reorder + UI Fixes
+**Goal:** Move `write_jira_node` to Phase 1 end with a new `review_jira` gate; three UI polish fixes
+**Done when:** TypeScript 0 errors; JIRA gate appears in Phase 1 stepper; stepper shows square badges; platform selector is a segmented control
+
+- [x] **Pipeline reorder** — `write_jira` moved from Phase 2 tail to Phase 1 end (after `coverage_validation`); `review_jira` gate added as Phase 1 Gate 4; `interrupt_before` updated in `builder.py`; phase2_unlocked guard shifted to `review_jira` gate in `api/main.py`
+- [x] **`review_coverage` disposition** — no longer fires as an active interrupt; auto-approves via `outputKey: "coverage_report"`; kept in `VIEWABLE_GATES` for browsable review
+- [x] **Backend wiring** — `_NEXT_NODE_TO_GATE`, `_GATE_TO_RERUN_AS_NODE`, `_GATE_TO_STATE_FIELD`, `_GATE_TO_ID_FIELD`, `_GATE_TIMEOUT_ENV` all updated in `api/main.py`; `review_jira` added to `graph/state.py` and `agent/state_factory.py`
+- [x] **`WriteJiraPanel`** — new component at bottom of `page.tsx`; shows parent ticket card, idempotency banner, Skip JIRA button, TC preview table (ID / Title / Priority / Type / Action)
+- [x] **Platform selector** — 2-column icon card grid replaced with inline segmented control; 8px colored dots; Azure tab locked (opacity 0.4, pointer-events none)
+- [x] **ASS→NOTE wording** — `RequirementsPanel.tsx` badge prefix `ASS-` → `NOTE-`; section title `"Assumptions"` → `"Notes & Assumptions"`; existing `ASS-` IDs in state stripped to `NOTE-` at render time
+- [x] **Stepper square badges** — all circle+line indicators replaced with 28×28 square badges (border-radius 6); `border-pulse` / `border-pulse-purple` keyframes in `globals.css`; ACTIVE pill below step name; phase tabs redesigned; `review_jira` added to `VIEWABLE_GATES`
+- [x] **`GateActionBar`** — `review_jira: "Create Sub-tasks →"` added to `APPROVE_LABELS`
+- [x] **`types.ts`** — `review_jira: ReviewDecision | null` added to `AgentState`; `write_jira` step moved to Phase 1 with `gate: "review_jira"` in `PIPELINE_STEPS`
+- [x] TypeScript: 0 errors confirmed via `getDiagnostics`
+- [x] `ARCHITECTURE.md` updated
+
+**Notes:** Skip JIRA button in WriteJiraPanel currently calls `handleApprove()` (same as Create Sub-tasks) — a backend `skip_jira` flag in `ResumeRunBody` and `write_jira_node` is needed to make the distinction functional.
+**Deviations:** `review_coverage` kept in `GATE_META` and `VIEWABLE_GATES` for view-only browsing even though it no longer fires as an active gate.
+**Known issues:** Skip JIRA is a UI placeholder — no backend skip logic yet.
+
+---
+
+### ✅ SESSION 10 — Next.js UI
 **Goal:** Fully working futuristic dashboard that drives a complete pipeline run
 **Done when:** A non-developer can start a pipeline, review each gate, and approve/reject via the UI
 
-- [ ] Next.js 14 project created in `ui/` with Tailwind CSS
-- [ ] Dark futuristic theme: deep navy + teal/purple accents, monospace IDs
-- [ ] Header: logo + title + Claude/Grok agent toggle (pill)
-- [ ] JIRA ticket input + Start button → `POST /runs/start`
-- [ ] Left panel: vertical stepper — all 9 steps, phase colour coding, pulsing active step
-- [ ] Right panel: structured card rendering per step (not raw JSON)
-- [ ] Requirements → REQ cards with ID badge + type tag
-- [ ] HLS → cards with linked REQ chips
-- [ ] TCs → expandable cards with steps table
-- [ ] Coverage → donut chart + gap table
-- [ ] Classifications → table with mode badge + confidence bar
-- [ ] Report → summary stats row + results table with status colours
-- [ ] Gate action bar: Approve (green) / Reject (red) / Edit mode toggle
-- [ ] Reject shows feedback textarea before confirming
-- [ ] Edit mode: inline editing of displayed cards
-- [ ] Auto-approve countdown timer shown if gate_timeout is set
-- [ ] Activity log drawer: live polling every 3s, timestamped node events
-- [ ] API proxy configured in `next.config.js` → `localhost:8000`
-- [ ] `ARCHITECTURE.md` updated — UI section added
+- [x] Next.js 14 project created in `ui/` with Tailwind CSS v4
+- [x] Deep-space design system: `#080d14` bg, `#111827` cards, teal `#14b8a6` / purple `#8b5cf6`
+- [x] Header: 44px fixed, run ID badge, compact 3-provider selector (Claude/Groq/Grok)
+- [x] JIRA ticket input + Start button → `POST /runs/start`; Azure DevOps toggle (cosmetic)
+- [x] Launch screen: centered 480px card, terminal icon, pipeline stage tags, gradient launch button
+- [x] Left sidebar (220px): phase-separated stepper, per-node provider pills (C/G/X), MCP lock badge
+- [x] Requirements → 4 stat cards + left-border list with edit mode
+- [x] HLS → 2-col responsive grid
+- [x] TCs → filter tabs (All/Critical/High/Medium/Low) + expandable cards
+- [x] Coverage → SVG donut chart + stats + phase unlock banner (`ui/components/panels/CoveragePanel.tsx`)
+- [x] Classifications → table with mode badges
+- [x] Scripts → collapsible list with filename + content preview
+- [x] Report → summary stat cards + results list with status colors
+- [x] Gate action bar: redesigned with teal Approve gradient / red Reject / edit toggle
+- [x] Reject shows feedback textarea before confirming
+- [x] Edit mode: inline editing of requirement/HLS/TC cards
+- [x] Toast redesign: left color border, 6s progress bar animation, collapsible raw error
+- [x] Activity log drawer (200px): collapsible, monospace timestamped entries
+- [x] Per-node provider selection: stepper pills sync with global toggle; disabled after node completion
+- [x] `ARCHITECTURE.md` updated
 
-**Notes:** _add after completion_
-**Deviations:** _none_
+**Notes:** Sessions covered multiple passes of iterative refinement including: project_name threading to resume API, TypeError fix in handleStart, rate-limit toast, futuristic background, phase stepper, fetch_ticket done state, 3-provider toggle, full per-node provider system (backend + frontend), and complete visual redesign.
+**Deviations:** No recharts dependency — coverage donut uses pure SVG. Activity log tracks UI-triggered events (not server-side node events).
 **Known issues:** _none_
 
 ---

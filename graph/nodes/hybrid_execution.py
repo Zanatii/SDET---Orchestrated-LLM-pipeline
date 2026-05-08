@@ -6,8 +6,8 @@ from langgraph.types import interrupt
 from pydantic import ValidationError  # noqa: F401
 
 from agent.model_router import get_model
-from agent.node_logger import compute_input_hash, log_node_event
-from agent.provider import run_agent
+from agent.node_logger import compute_input_hash, emit_node_event, log_node_event
+from agent.provider import get_node_provider, run_agent
 from agent.safe_parse_json import safe_parse_json
 from graph.state import AgentState
 
@@ -92,6 +92,10 @@ async def _analyse_one(
 
 
 async def hybrid_execution_node(state: AgentState) -> AgentState:
+    if "execute_tests" in (state.get("skip_steps") or []):
+        print("[SKIP] execute_tests skipped by user")
+        return {**state, "execution_results": []}
+
     t0 = time.monotonic()
 
     tc_list = state.get("tc_list") or []
@@ -125,7 +129,7 @@ async def hybrid_execution_node(state: AgentState) -> AgentState:
         )
         return state
 
-    provider = state["provider"]
+    provider = get_node_provider(state, "hybrid_execution_node")
     model = get_model("hybrid_execution_node", provider)
 
     # LLM analysis pass — one call per TC
@@ -206,7 +210,7 @@ async def hybrid_execution_node(state: AgentState) -> AgentState:
         run_id=state["run_id"],
         node="hybrid_execution",
         attempt=0,
-        provider=provider,
+        provider=state["provider"],
         input_hash=input_hash,
         output_json={
             "total": len(final_results),
@@ -218,5 +222,6 @@ async def hybrid_execution_node(state: AgentState) -> AgentState:
         latency_ms=latency_ms,
         error=None,
     )
+    await emit_node_event(run_id=state["run_id"], node="hybrid_execution", latency_ms=latency_ms)
 
     return {**state, "execution_results": merged}

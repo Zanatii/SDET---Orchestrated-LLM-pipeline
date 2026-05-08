@@ -1,0 +1,39 @@
+{
+  "project_name": "test-project",
+  "feature_slug": "user-login",
+  "ticket_id": "SCRUM-6",
+  "run_id": "ce36eca7-ff38-415a-bad1-8c5ce2ed4398",
+  "generated_at": "2026-04-29T11:42:12.968727+00:00",
+  "scripts": [
+    {
+      "tc_id": "TC-001",
+      "local_path": "scripts\\generated\\test-project\\user-login\\specs\\tc_001.spec.ts",
+      "github_path": "tests/generated/test-project/user-login/specs/tc_001.spec.ts"
+    },
+    {
+      "tc_id": "TC-002",
+      "local_path": "scripts\\generated\\test-project\\user-login\\specs\\tc_002.spec.ts",
+      "github_path": "tests/generated/test-project/user-login/specs/tc_002.spec.ts"
+    },
+    {
+      "tc_id": "TC-003",
+      "local_path": "scripts\\generated\\test-project\\user-login\\specs\\tc_003.spec.ts",
+      "github_path": "tests/generated/test-project/user-login/specs/tc_003.spec.ts"
+    },
+    {
+      "tc_id": "TC-004",
+      "local_path": "scripts\\generated\\test-project\\user-login\\specs\\tc_004.spec.ts",
+      "github_path": "tests/generated/test-project/user-login/specs/tc_004.spec.ts"
+    },
+    {
+      "tc_id": "TC-005",
+      "local_path": "scripts\\generated\\test-project\\user-login\\specs\\tc_005.spec.ts",
+      "github_path": "tests/generated/test-project/user-login/specs/tc_005.spec.ts"
+    },
+    {
+      "tc_id": "TC-007",
+      "local_path": "scripts\\generated\\test-project\\user-login\\specs\\tc_007.spec.ts",
+      "github_path": "tests/generated/test-project/user-login/specs/tc_007.spec.ts"
+    }
+  ]
+}

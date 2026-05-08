@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     review_hls:             Optional[dict]
     review_tcs:             Optional[dict]
     review_coverage:        Optional[dict]
+    review_jira:            Optional[dict]
     review_classifications: Optional[dict]
     review_scripts:         Optional[dict]
     review_report:          Optional[dict]
@@ -41,3 +42,9 @@ class AgentState(TypedDict):
     _auto_approved_reason:  Optional[str]
     error:                  Optional[str]
     feedback_injected:      Optional[dict]
+    node_providers:         Optional[dict]
+    skip_steps:             Optional[List[str]]
+    # Jira output configuration
+    jira_tc_project_key:    str
+    jira_functional_area:   str
+    jira_selected_tc_ids:   Optional[List[str]]

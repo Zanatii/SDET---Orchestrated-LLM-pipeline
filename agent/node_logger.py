@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 import asyncpg
@@ -50,3 +51,18 @@ async def log_node_event(
             await conn.close()
     except Exception:
         pass  # DB logging must never crash a node
+
+
+async def emit_node_event(run_id: str, node: str, latency_ms: int, status: str = "completed") -> None:
+    """Push node completion event to WebSocket clients via notification queue."""
+    try:
+        from api.main import notification_queue  # local import to avoid circular deps
+        await notification_queue.put((run_id, {
+            "type": "node_completed",
+            "node": node,
+            "latency_ms": latency_ms,
+            "status": status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }))
+    except Exception:
+        pass  # never crash a node due to notification failure

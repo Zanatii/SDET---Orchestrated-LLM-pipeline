@@ -2,16 +2,16 @@
 
 /* ── Design tokens ──────────────────────────────────────────────── */
 @theme {
-  --color-bg:      #0F172A;
-  --color-surface: #1E293B;
-  --color-border:  #334155;
-  --color-teal:    #0D9488;
-  --color-purple:  #7C3AED;
-  --color-text:    #F1F5F9;
-  --color-muted:   #94A3B8;
-  --color-amber:   #F59E0B;
-  --color-red:     #EF4444;
-  --color-green:   #22C55E;
+  --color-bg:      #070d18;
+  --color-surface: #0e1726;
+  --color-border:  #1f2937;
+  --color-teal:    #1dc8b8;
+  --color-purple:  #9d6ef7;
+  --color-text:    #dde4ef;
+  --color-muted:   #8896a8;
+  --color-amber:   #f59e0b;
+  --color-red:     #ef4444;
+  --color-green:   #22c55e;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
@@ -19,17 +19,129 @@
 
 html, body {
   height: 100%;
-  background-color: #0F172A;
-  color: #F1F5F9;
+  color: #dde4ef;
 }
 
-/* Pulsing ring for active stepper step */
+body {
+  background-color: #070d18;
+  background-image:
+    radial-gradient(ellipse at 15% 25%, rgba(29, 200, 184, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 75%, rgba(157, 110, 247, 0.07) 0%, transparent 55%),
+    linear-gradient(rgba(29, 200, 184, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(29, 200, 184, 0.02) 1px, transparent 1px),
+    linear-gradient(135deg, #070d18 0%, #091020 50%, #070d18 100%);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px, 100% 100%;
+}
+
+/* ── Cursor defaults ─────────────────────────────────────────────── */
+button, [role="button"] { cursor: pointer; }
+button:disabled         { cursor: not-allowed; }
+
+/* ── Animations ─────────────────────────────────────────────────── */
 @keyframes pulse-ring {
-  0%   { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.6); }
-  70%  { box-shadow: 0 0 0 6px rgba(13, 148, 136, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(29, 200, 184, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(29, 200, 184, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(29, 200, 184, 0); }
 }
 
-.animate-pulse-ring {
-  animation: pulse-ring 1.8s ease-out infinite;
+@keyframes pulse-ring-purple {
+  0%   { box-shadow: 0 0 0 0 rgba(157, 110, 247, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(157, 110, 247, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(157, 110, 247, 0); }
 }
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-progress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pulse-ring        { animation: pulse-ring 1.8s ease-out infinite; }
+.animate-pulse-ring-purple { animation: pulse-ring-purple 1.8s ease-out infinite; }
+.animate-slide-in          { animation: slide-in 0.2s ease-out; }
+.animate-toast-progress    { animation: toast-progress 6s linear forwards; }
+.animate-spin-slow         { animation: spin-slow 3s linear infinite; }
+.animate-fade-up           { animation: fade-up 0.3s ease-out; }
+
+@keyframes ws-pulse {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+@keyframes shimmer {
+  from { background-position: -200px 0; }
+  to   { background-position: calc(200px + 100%) 0; }
+}
+
+.animate-ws-pulse { animation: ws-pulse 1.5s ease-out infinite; }
+
+@keyframes dash-flow {
+  to { background-position: 0 8px; }
+}
+.animate-dash-flow {
+  animation: dash-flow 0.4s linear infinite;
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(29,200,184,0.12), transparent);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes border-pulse {
+  0%, 100% { border-color: rgba(29,200,184,0.5); }
+  50%       { border-color: rgba(29,200,184,1); }
+}
+
+@keyframes border-pulse-purple {
+  0%, 100% { border-color: rgba(157,110,247,0.5); }
+  50%       { border-color: rgba(157,110,247,1); }
+}
+
+/* ── Select / dropdown dark theme ───────────────────────────────── */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #0e1726;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: #dde4ef;
+  padding: 6px 28px 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%231dc8b8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color 0.15s ease;
+}
+
+select:hover  { border-color: rgba(29,200,184,0.3); }
+select:focus  {
+  outline: none;
+  border-color: rgba(29,200,184,0.5);
+  box-shadow: 0 0 0 2px rgba(29,200,184,0.1);
+}
+
+select option {
+  background: #0e1726;
+  color: #dde4ef;
+}
+
+/* ── Custom scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar              { width: 4px; height: 4px; }
+::-webkit-scrollbar-track        { background: transparent; }
+::-webkit-scrollbar-thumb        { background: rgba(29,200,184,0.3); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover  { background: rgba(29,200,184,0.6); }

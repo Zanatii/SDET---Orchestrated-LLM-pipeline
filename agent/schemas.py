@@ -47,6 +47,7 @@ class TCItem(_Base):
     steps: List[TCStep]
     priority: str
     type: str
+    test_type: str = "Functional"
 
 
 class TCOutput(_Base):

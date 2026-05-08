@@ -5,8 +5,8 @@ from pydantic import ValidationError  # noqa: F401 — propagates through with_r
 
 from agent.feedback_retriever import get_feedback_examples
 from agent.model_router import get_model
-from agent.node_logger import compute_input_hash, log_node_event
-from agent.provider import run_agent
+from agent.node_logger import compute_input_hash, emit_node_event, log_node_event
+from agent.provider import get_node_provider, run_agent
 from agent.retry import with_retry
 from agent.safe_parse_json import safe_parse_json
 from agent.schemas import ClassificationOutput
@@ -25,7 +25,8 @@ async def classify_tcs_node(state: AgentState) -> AgentState:
     })
 
     async def _classify(s: AgentState) -> AgentState:
-        model = get_model("classify_tcs_node", s["provider"])
+        provider = get_node_provider(s, "classify_tcs_node")
+        model = get_model("classify_tcs_node", provider)
         feedback_examples = await get_feedback_examples(
             node="classify_tcs",
             ticket_type=(s.get("ticket_data") or {}).get("type"),
@@ -37,7 +38,7 @@ async def classify_tcs_node(state: AgentState) -> AgentState:
         )
         raw = await run_agent(
             prompt=prompt,
-            provider=s["provider"],
+            provider=provider,
             system=prompts.SYSTEM,
             calling_node="classify_tcs_node",
             model_override=model,
@@ -66,5 +67,6 @@ async def classify_tcs_node(state: AgentState) -> AgentState:
         latency_ms=latency_ms,
         error=result.get("error"),
     )
+    await emit_node_event(run_id=state["run_id"], node="classify_tcs", latency_ms=latency_ms)
 
     return result

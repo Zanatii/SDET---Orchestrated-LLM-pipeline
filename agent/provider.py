@@ -18,6 +18,18 @@ _MCP_ONLY_NODES: frozenset[str] = frozenset({
 })
 
 
+def get_node_provider(state: dict, node_name: str) -> str:
+    """Return the provider for a specific node.
+
+    Priority: node_providers[node_name] > state['provider'] > 'groq'
+    MCP nodes always return 'claude' regardless of selection.
+    """
+    if node_name in _MCP_ONLY_NODES:
+        return "claude"
+    node_providers = state.get("node_providers") or {}
+    return node_providers.get(node_name, state.get("provider", "groq"))
+
+
 async def run_agent(
     prompt: str,
     provider: str = "claude",

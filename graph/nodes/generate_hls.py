@@ -4,8 +4,8 @@ import time
 
 from pydantic import ValidationError  # noqa: F401 — propagates through with_retry
 
-from agent.node_logger import compute_input_hash, log_node_event
-from agent.provider import run_agent
+from agent.node_logger import compute_input_hash, emit_node_event, log_node_event
+from agent.provider import get_node_provider, run_agent
 from agent.retry import with_retry
 from agent.schemas import HLSItem, HLSOutput
 from agent.prompts import generate_hls as prompts
@@ -130,9 +130,10 @@ async def generate_hls_node(state: AgentState) -> AgentState:
         else:
             prompt = _build_full_prompt(req_analysis, feedback_examples)
 
+        provider = get_node_provider(s, "generate_hls_node")
         raw = await run_agent(
             prompt=prompt,
-            provider="groq",
+            provider=provider,
             system=prompts.SYSTEM,
             calling_node="generate_hls_node",
         )
@@ -179,5 +180,6 @@ async def generate_hls_node(state: AgentState) -> AgentState:
         latency_ms=latency_ms,
         error=result.get("error"),
     )
+    await emit_node_event(run_id=state["run_id"], node="generate_hls", latency_ms=latency_ms)
 
     return result

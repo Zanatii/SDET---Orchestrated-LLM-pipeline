@@ -6,6 +6,7 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 
+from agent.jira_auth import get_jira_headers
 from agent.node_logger import compute_input_hash, log_node_event
 from agent.retry import with_retry
 from graph.state import AgentState
@@ -13,7 +14,6 @@ from graph.state import AgentState
 load_dotenv()
 
 _JIRA_URL: str = os.getenv("JIRA_URL", "").rstrip("/")
-_JIRA_EMAIL: str = os.getenv("JIRA_EMAIL", "")
 _JIRA_TOKEN: str = os.getenv("JIRA_API_TOKEN", "")
 
 
@@ -43,20 +43,19 @@ def _extract_ac(fields: dict) -> str:
 
 
 async def _fetch_inner(state: AgentState) -> AgentState:
-    if not (_JIRA_URL and _JIRA_EMAIL and _JIRA_TOKEN):
+    if not (_JIRA_URL and _JIRA_TOKEN):
         raise ValueError(
-            "JIRA credentials not configured — set JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN in .env"
+            "JIRA credentials not configured — set JIRA_URL and JIRA_API_TOKEN in .env"
         )
 
     ticket_id = state["ticket_id"]
-    url = f"{_JIRA_URL}/rest/api/3/issue/{ticket_id}"
+    url = f"{_JIRA_URL}/rest/api/2/issue/{ticket_id}"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            url,
-            auth=(_JIRA_EMAIL, _JIRA_TOKEN),
-            headers={"Accept": "application/json"},
-        )
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+        resp = await client.get(url, headers=get_jira_headers())
+
+    if resp.status_code == 302:
+        raise Exception("Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
 
     if resp.status_code == 404:
         # Not retry-worthy — return immediately with error flag

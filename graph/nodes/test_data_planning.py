@@ -5,8 +5,8 @@ from pydantic import ValidationError  # noqa: F401 — propagates through with_r
 
 from agent.feedback_retriever import get_feedback_examples
 from agent.model_router import get_model
-from agent.node_logger import compute_input_hash, log_node_event
-from agent.provider import run_agent
+from agent.node_logger import compute_input_hash, emit_node_event, log_node_event
+from agent.provider import get_node_provider, run_agent
 from agent.retry import with_retry
 from agent.safe_parse_json import safe_parse_json
 from agent.schemas import TestDataOutput
@@ -33,6 +33,10 @@ def _enforce_sensitivity(items: list[dict]) -> list[dict]:
 
 
 async def test_data_planning_node(state: AgentState) -> AgentState:
+    if "test_data_planning" in (state.get("skip_steps") or []):
+        print("[SKIP] test_data_planning_node skipped by user")
+        return {**state, "test_data_requirements": []}
+
     t0 = time.monotonic()
     tc_list = state.get("tc_list") or []
     tc_classifications = state.get("tc_classifications") or []
@@ -43,7 +47,8 @@ async def test_data_planning_node(state: AgentState) -> AgentState:
     })
 
     async def _plan(s: AgentState) -> AgentState:
-        model = get_model("test_data_planning_node", s["provider"])
+        provider = get_node_provider(s, "test_data_planning_node")
+        model = get_model("test_data_planning_node", provider)
         feedback_examples = await get_feedback_examples(
             node="test_data_planning",
             ticket_type=(s.get("ticket_data") or {}).get("type"),
@@ -55,7 +60,7 @@ async def test_data_planning_node(state: AgentState) -> AgentState:
         )
         raw = await run_agent(
             prompt=prompt,
-            provider=s["provider"],
+            provider=provider,
             system=prompts.SYSTEM,
             calling_node="test_data_planning_node",
             model_override=model,
@@ -85,5 +90,6 @@ async def test_data_planning_node(state: AgentState) -> AgentState:
         latency_ms=latency_ms,
         error=result.get("error"),
     )
+    await emit_node_event(run_id=state["run_id"], node="test_data_planning", latency_ms=latency_ms)
 
     return result

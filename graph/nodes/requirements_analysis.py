@@ -4,8 +4,8 @@ import time
 
 from pydantic import ValidationError  # noqa: F401 — imported so with_retry catches it
 
-from agent.node_logger import compute_input_hash, log_node_event
-from agent.provider import run_agent
+from agent.node_logger import compute_input_hash, emit_node_event, log_node_event
+from agent.provider import get_node_provider, run_agent
 from agent.retry import with_retry
 from agent.schemas import RequirementsOutput
 from agent.prompts import requirements_analysis as prompts
@@ -65,9 +65,10 @@ async def requirements_analysis_node(state: AgentState) -> AgentState:
             node="requirements_analysis",
             ticket_type=(s.get("ticket_data") or {}).get("type"),
         )
+        provider = get_node_provider(s, "requirements_analysis_node")
         raw = await run_agent(
             prompt=_build_prompt(s.get("ticket_data") or {}, feedback_examples),
-            provider="groq",
+            provider=provider,
             system=prompts.SYSTEM,
             calling_node="requirements_analysis_node",
         )
@@ -96,5 +97,6 @@ async def requirements_analysis_node(state: AgentState) -> AgentState:
         latency_ms=latency_ms,
         error=result.get("error"),
     )
+    await emit_node_event(run_id=state["run_id"], node="requirements_analysis", latency_ms=latency_ms)
 
     return result

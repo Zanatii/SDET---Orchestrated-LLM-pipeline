@@ -1,0 +1,39 @@
+{
+  "project_name": "default",
+  "feature_slug": "email-password-login",
+  "ticket_id": "SCRUM-6",
+  "run_id": "1d7b0b71-5102-47f8-ad56-024d1a67ea4d",
+  "generated_at": "2026-04-30T11:11:41.598655+00:00",
+  "scripts": [
+    {
+      "tc_id": "TC-001",
+      "local_path": "scripts\\generated\\default\\email-password-login\\specs\\tc_001.spec.ts",
+      "github_path": "tests/generated/default/email-password-login/specs/tc_001.spec.ts"
+    },
+    {
+      "tc_id": "TC-002",
+      "local_path": "scripts\\generated\\default\\email-password-login\\specs\\tc_002.spec.ts",
+      "github_path": "tests/generated/default/email-password-login/specs/tc_002.spec.ts"
+    },
+    {
+      "tc_id": "TC-003",
+      "local_path": "scripts\\generated\\default\\email-password-login\\specs\\tc_003.spec.ts",
+      "github_path": "tests/generated/default/email-password-login/specs/tc_003.spec.ts"
+    },
+    {
+      "tc_id": "TC-004",
+      "local_path": "scripts\\generated\\default\\email-password-login\\specs\\tc_004.spec.ts",
+      "github_path": "tests/generated/default/email-password-login/specs/tc_004.spec.ts"
+    },
+    {
+      "tc_id": "TC-005",
+      "local_path": "scripts\\generated\\default\\email-password-login\\specs\\tc_005.spec.ts",
+      "github_path": "tests/generated/default/email-password-login/specs/tc_005.spec.ts"
+    },
+    {
+      "tc_id": "TC-006",
+      "local_path": "scripts\\generated\\default\\email-password-login\\specs\\tc_006.spec.ts",
+      "github_path": "tests/generated/default/email-password-login/specs/tc_006.spec.ts"
+    }
+  ]
+}

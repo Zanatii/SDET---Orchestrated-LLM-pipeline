@@ -11,20 +11,13 @@ from typing import Optional
 
 import httpx
 
+from agent.jira_auth import get_jira_headers
 from agent.node_logger import compute_input_hash, log_node_event
 from graph.state import AgentState
 
 _JIRA_URL: str = os.getenv("JIRA_URL", "").rstrip("/")
 _JIRA_EMAIL: str = os.getenv("JIRA_EMAIL", "")
 _JIRA_TOKEN: str = os.getenv("JIRA_API_TOKEN", "")
-
-
-def _auth() -> tuple[str, str]:
-    return (_JIRA_EMAIL, _JIRA_TOKEN)
-
-
-def _headers() -> dict[str, str]:
-    return {"Accept": "application/json", "Content-Type": "application/json"}
 
 
 # ── ADF helpers ───────────────────────────────────────────────────────────────
@@ -68,17 +61,21 @@ def _build_description(tc: dict, result: Optional[dict], screenshot_url: Optiona
 
 # ── JIRA REST helpers ─────────────────────────────────────────────────────────
 
+def _check_redirect(resp: httpx.Response) -> None:
+    if resp.status_code == 302:
+        raise Exception("Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
+
 async def _search_subtask(
     client: httpx.AsyncClient, ticket_id: str, tc_id: str
 ) -> Optional[str]:
     """Return the JIRA issue key of an existing sub-task, or None."""
     jql = f'parent = "{ticket_id}" AND labels = "sdet-agent" AND summary ~ "{tc_id}"'
     resp = await client.get(
-        f"{_JIRA_URL}/rest/api/3/issue/search",
-        auth=_auth(),
-        headers={"Accept": "application/json"},
+        f"{_JIRA_URL}/rest/api/2/issue/search",
+        headers=get_jira_headers(),
         params={"jql": jql, "maxResults": 10, "fields": "summary"},
     )
+    _check_redirect(resp)
     resp.raise_for_status()
     prefix = f"[SDET] {tc_id}"
     for issue in resp.json().get("issues", []):
@@ -93,6 +90,8 @@ def _issue_fields(
     result: Optional[dict],
     screenshot_url: Optional[str],
     qa_status_field: Optional[str],
+    project_key: str,
+    functional_area: str,
     *,
     include_project: bool,
 ) -> dict:
@@ -102,14 +101,19 @@ def _issue_fields(
     if hls_id:
         labels.append(hls_id)
 
+    test_type = tc.get("test_type", "Functional")
+    if test_type not in ("Functional", "Integration"):
+        test_type = "Functional"
+
     fields: dict = {
         "summary": f"[SDET] {tc.get('id', '')} — {tc.get('title', '')}",
         "description": _build_description(tc, result, screenshot_url),
         "priority": {"name": tc.get("priority", "Medium")},
         "labels": labels,
+        "customfield_14109": {"value": test_type},
+        "customfield_10300": [{"value": functional_area}],
     }
     if include_project:
-        project_key = ticket_id.split("-")[0]
         subtask_type = os.getenv("JIRA_SUBTASK_TYPE", "Sub-task")
         fields["project"] = {"key": project_key}
         fields["parent"] = {"key": ticket_id}
@@ -127,14 +131,16 @@ async def _create_subtask(
     result: Optional[dict],
     screenshot_url: Optional[str],
     qa_status_field: Optional[str],
+    project_key: str,
+    functional_area: str,
 ) -> str:
-    fields = _issue_fields(ticket_id, tc, result, screenshot_url, qa_status_field, include_project=True)
+    fields = _issue_fields(ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area, include_project=True)
     resp = await client.post(
-        f"{_JIRA_URL}/rest/api/3/issue",
-        auth=_auth(),
-        headers=_headers(),
+        f"{_JIRA_URL}/rest/api/2/issue",
+        headers=get_jira_headers(),
         json={"fields": fields},
     )
+    _check_redirect(resp)
     resp.raise_for_status()
     return resp.json()["key"]
 
@@ -147,14 +153,16 @@ async def _update_subtask(
     result: Optional[dict],
     screenshot_url: Optional[str],
     qa_status_field: Optional[str],
+    project_key: str,
+    functional_area: str,
 ) -> None:
-    fields = _issue_fields(ticket_id, tc, result, screenshot_url, qa_status_field, include_project=False)
+    fields = _issue_fields(ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area, include_project=False)
     resp = await client.put(
-        f"{_JIRA_URL}/rest/api/3/issue/{issue_key}",
-        auth=_auth(),
-        headers=_headers(),
+        f"{_JIRA_URL}/rest/api/2/issue/{issue_key}",
+        headers=get_jira_headers(),
         json={"fields": fields},
     )
+    _check_redirect(resp)
     resp.raise_for_status()
 
 
@@ -163,42 +171,18 @@ async def _link_requirements(
 ) -> None:
     for req_id in req_ids:
         try:
-            await client.post(
-                f"{_JIRA_URL}/rest/api/3/issueLink",
-                auth=_auth(),
-                headers=_headers(),
+            resp = await client.post(
+                f"{_JIRA_URL}/rest/api/2/issueLink",
+                headers=get_jira_headers(),
                 json={
                     "type": {"name": "Relates"},
                     "inwardIssue": {"key": issue_key},
                     "outwardIssue": {"key": req_id},
                 },
             )
+            _check_redirect(resp)
         except Exception:
             pass  # REQ IDs may not exist as JIRA issues — non-fatal
-
-
-async def _update_parent_status(
-    client: httpx.AsyncClient,
-    ticket_id: str,
-    statuses: list[str],
-    qa_status_field: Optional[str],
-) -> None:
-    if not qa_status_field:
-        return
-    if all(s == "passed" for s in statuses):
-        qa_value = "QA Passed"
-    elif any(s == "failed" for s in statuses):
-        qa_value = "QA Failed"
-    else:
-        qa_value = "QA In Progress"
-
-    resp = await client.put(
-        f"{_JIRA_URL}/rest/api/3/issue/{ticket_id}",
-        auth=_auth(),
-        headers=_headers(),
-        json={"fields": {qa_status_field: {"value": qa_value}}},
-    )
-    resp.raise_for_status()
 
 
 # ── Node ──────────────────────────────────────────────────────────────────────
@@ -219,16 +203,26 @@ async def write_jira_node(state: AgentState) -> AgentState:
         )
         return {**state, "error": error_msg}
 
+    project_key: str = state.get("jira_tc_project_key") or ticket_id.split("-")[0]
+    functional_area: str = state.get("jira_functional_area") or "Dubai Justice Platform"
+
+    selected_ids = state.get("jira_selected_tc_ids") or None
+    if selected_ids:
+        tc_list = [tc for tc in tc_list if tc.get("id") in selected_ids]
+
+    print(f"[JIRA] jira_selected_tc_ids: {state.get('jira_selected_tc_ids')}")
+    print(f"[JIRA] Total TCs in tc_list: {len(state.get('tc_list') or [])}")
+    print(f"[JIRA] TCs to process: {len(tc_list)}")
+    print(f"[JIRA] project_key={project_key!r}  functional_area={functional_area!r}  ticket_id={ticket_id!r}")
+
     results_by_tc: dict[str, dict] = {r["tc_id"]: r for r in execution_results}
     written: list[dict] = []
-    statuses: list[str] = []
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
         for tc in tc_list:
             tc_id = tc.get("id", "")
             result = results_by_tc.get(tc_id)
             status = (result or {}).get("status", "not_run")
-            statuses.append(status)
 
             screenshot_url: Optional[str] = None
             if status == "failed" and result:
@@ -240,22 +234,19 @@ async def write_jira_node(state: AgentState) -> AgentState:
             try:
                 existing_key = await _search_subtask(client, ticket_id, tc_id)
                 if existing_key:
-                    await _update_subtask(client, existing_key, ticket_id, tc, result, screenshot_url, qa_status_field)
+                    await _update_subtask(client, existing_key, ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area)
                     issue_key = existing_key
                     action = "updated"
                 else:
-                    issue_key = await _create_subtask(client, ticket_id, tc, result, screenshot_url, qa_status_field)
+                    issue_key = await _create_subtask(client, ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area)
                     action = "created"
 
                 await _link_requirements(client, issue_key, tc.get("linked_requirements", []))
                 written.append({"tc_id": tc_id, "issue_key": issue_key, "action": action})
             except Exception as exc:
+                err_detail = exc.response.text if hasattr(exc, "response") else str(exc)
+                print(f"[JIRA] ERROR for {tc_id}: {err_detail[:400]}")
                 written.append({"tc_id": tc_id, "issue_key": None, "error": str(exc)[:200]})
-
-        try:
-            await _update_parent_status(client, ticket_id, statuses, qa_status_field)
-        except Exception:
-            pass  # Parent update failure is non-fatal
 
     latency_ms = int((time.monotonic() - t0) * 1000)
     await log_node_event(

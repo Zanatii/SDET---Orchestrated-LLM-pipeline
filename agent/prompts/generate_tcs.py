@@ -25,7 +25,8 @@ Return JSON:
         {{"action": "Navigate to /checkout", "expected": "Checkout page loads with cart summary"}}
       ],
       "priority": "high|medium|low",
-      "type": "positive|negative|edge|exploratory"
+      "type": "positive|negative|edge|exploratory",
+      "test_type": "Functional"
     }}
   ]
 }}
@@ -36,4 +37,5 @@ RULES:
 - Steps must be atomic: one action, one assertion per step
 - Preconditions must be concrete and executable, not vague
 - Priority: high = core happy path or security, medium = important flows, low = edge/exploratory
-- Number TCs sequentially: TC-001, TC-002 ..."""
+- Number TCs sequentially: TC-001, TC-002 ...
+- test_type: set to "Integration" if the TC tests an API endpoint, service call, data flow between systems, or backend integration; set to "Functional" for all other cases (UI, business logic, validation, display, navigation); default is "Functional" when uncertain"""

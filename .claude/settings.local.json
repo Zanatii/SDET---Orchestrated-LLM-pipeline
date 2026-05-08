@@ -25,7 +25,14 @@
       "Read(//c/Users/M.Zanaty/**)",
       "PowerShell(poetry run *)",
       "Bash(npx create-next-app@latest ui --typescript --tailwind --app --no-git --no-eslint --import-alias \"@/*\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(dir *)",
+      "mcp__ide__getDiagnostics",
+      "Bash(python -c \"from graph.builder import graph; print\\('Graph compiled OK, nodes:', list\\(graph.nodes.keys\\(\\)\\)\\)\")",
+      "Bash(python -m py_compile graph/builder.py)",
+      "Bash(python -m py_compile api/main.py)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }

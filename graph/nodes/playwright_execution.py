@@ -18,9 +18,9 @@ from typing import Optional
 
 import httpx
 
-from agent.node_logger import compute_input_hash, log_node_event
+from agent.node_logger import compute_input_hash, emit_node_event, log_node_event
 from agent.prompts import playwright_scripts as pw_prompts
-from agent.provider import run_agent
+from agent.provider import get_node_provider, run_agent
 from agent.safe_parse_json import safe_parse_json
 from scripts.s3_upload import generate_presigned_url, upload_artifact
 from graph.state import AgentState
@@ -234,8 +234,10 @@ def _resolve_test_data(fields: list[dict]) -> dict[str, str]:
     return resolved
 
 
-async def _plan_execution_commands(tc: dict, resolved_data: dict[str, str]) -> list[dict]:
-    """Ask Claude to convert TC steps into Playwright primitive commands."""
+async def _plan_execution_commands(
+    tc: dict, resolved_data: dict[str, str], provider: str = "claude"
+) -> list[dict]:
+    """Ask the LLM to convert TC steps into Playwright primitive commands."""
     steps_text = _format_steps(tc.get("steps") or [])
     data_text = "\n".join(f"  {k}: {v}" for k, v in resolved_data.items()) or "  (none)"
     prompt = _PLAN_USER_TEMPLATE.format(
@@ -246,7 +248,7 @@ async def _plan_execution_commands(tc: dict, resolved_data: dict[str, str]) -> l
     )
     raw = await run_agent(
         prompt=prompt,
-        provider="groq",
+        provider=provider,
         system=_PLAN_SYSTEM,
         calling_node="playwright_execution_node",
     )
@@ -297,7 +299,7 @@ def _skipped_result(tc: dict, reason: str) -> dict:
     }
 
 
-async def _run_one_tc(page, tc: dict, resolved_data: dict[str, str], run_id: str) -> dict:
+async def _run_one_tc(page, tc: dict, resolved_data: dict[str, str], run_id: str, provider: str = "claude") -> dict:
     """Execute all steps of one TC. Returns a result dict."""
     tc_id = tc["id"]
     hls_id = tc.get("hls_id", "")
@@ -312,7 +314,7 @@ async def _run_one_tc(page, tc: dict, resolved_data: dict[str, str], run_id: str
     )
 
     try:
-        commands = await _plan_execution_commands(tc, resolved_data)
+        commands = await _plan_execution_commands(tc, resolved_data, provider)
     except Exception as exc:
         return _skipped_result(tc, f"execution plan failed: {exc}")
 
@@ -370,6 +372,7 @@ async def _workflow_b(
     automated_tcs: list[dict],
     test_data_by_tc: dict[str, dict],
     run_id: str,
+    provider: str = "claude",
 ) -> list[dict]:
     """Workflow B — live browser execution of all automated TCs."""
     if not automated_tcs:
@@ -401,7 +404,7 @@ async def _workflow_b(
 
             context = await browser.new_context(**ctx_kwargs)
             page = await context.new_page()
-            result = await _run_one_tc(page, tc, resolved_data, run_id)
+            result = await _run_one_tc(page, tc, resolved_data, run_id, provider)
 
             # Video upload on failure when recording
             if record_video and result["status"] == "failed":
@@ -554,7 +557,12 @@ async def _commit_files_batch(
 # ── Node ───────────────────────────────────────────────────────────────────────
 
 async def playwright_execution_node(state: AgentState) -> AgentState:
+    if "generate_scripts" in (state.get("skip_steps") or []):
+        print("[SKIP] generate_scripts skipped by user")
+        return {**state, "scripts_written": []}
+
     t0 = time.monotonic()
+    node_provider = get_node_provider(state, "playwright_execution_node")
 
     tc_list: list[dict] = state.get("tc_list") or []
     classifications: dict[str, dict] = {
@@ -583,8 +591,16 @@ async def playwright_execution_node(state: AgentState) -> AgentState:
     wf_a_error: Optional[str] = None
 
     if automated_tcs:
-        # Step 1 — project_name
-        project_name = (state.get("project_name") or "default").lower().strip().replace(" ", "-")
+        # Step 1 — project_name (auto-generate if not set)
+        if state.get("project_name"):
+            project_name = state["project_name"].lower().strip().replace(" ", "-")
+        else:
+            base_slug = (state.get("feature_slug") or "project").lower().strip().replace(" ", "-") or "project"
+            gen_root = os.path.join("scripts", "generated")
+            existing_dirs = os.listdir(gen_root) if os.path.exists(gen_root) else []
+            matching = [d for d in existing_dirs if d.startswith(base_slug)]
+            version = len(matching) + 1
+            project_name = f"{base_slug}-v{version}"
 
         # Step 2 — feature_slug via LLM
         reqs = (state.get("requirements_analysis") or {}).get("requirements") or []
@@ -598,7 +614,7 @@ async def playwright_execution_node(state: AgentState) -> AgentState:
             "Return ONLY the slug string, nothing else."
         )
         try:
-            raw_slug = (await run_agent(slug_prompt, provider="groq", max_tokens=20)).strip().lower()
+            raw_slug = (await run_agent(slug_prompt, provider=node_provider, max_tokens=20)).strip().lower()
             feature_slug = re.sub(r"[^a-z0-9-]", "-", raw_slug).strip("-") or "feature"
         except Exception:
             feature_slug = "feature"
@@ -659,7 +675,7 @@ async def playwright_execution_node(state: AgentState) -> AgentState:
                     )
                     raw = await run_agent(
                         prompt=prompt,
-                        provider="claude",
+                        provider=node_provider,
                         system=pw_prompts.SYSTEM,
                         calling_node="playwright_execution_node",
                     )
@@ -731,7 +747,7 @@ async def playwright_execution_node(state: AgentState) -> AgentState:
             wf_a_error = f"Summary write failed: {exc}"
 
     # ── Workflow B: Live Execution ─────────────────────────────────────────────
-    execution_results = await _workflow_b(automated_tcs, test_data_by_tc, run_id)
+    execution_results = await _workflow_b(automated_tcs, test_data_by_tc, run_id, node_provider)
 
     # ── Log combined summary ───────────────────────────────────────────────────
     passed = sum(1 for r in execution_results if r.get("status") == "passed")
@@ -755,6 +771,7 @@ async def playwright_execution_node(state: AgentState) -> AgentState:
         latency_ms=latency_ms,
         error=error_summary,
     )
+    await emit_node_event(run_id=run_id, node="playwright_execution", latency_ms=latency_ms)
 
     return {
         **state,

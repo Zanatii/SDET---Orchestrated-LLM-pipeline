@@ -23,17 +23,36 @@ from graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# Seven human-review interrupt gates, declared at compile time.
+
+def make_skippable_node(node_fn, skip_key: str):
+    """Wrap a node so it returns immediately when skip_key is in state.skip_steps."""
+    async def wrapper(state: AgentState) -> AgentState:
+        skip_steps = state.get("skip_steps") or []
+        if skip_key in skip_steps:
+            print(f"[SKIP] {skip_key} — skipped by user")
+            return state
+        return await node_fn(state)
+    return wrapper
+
+
+def _skip_scripts_router(state: AgentState) -> str:
+    """After test_data_planning: bypass generate_scripts interrupt when skipped."""
+    if "generate_scripts" in (state.get("skip_steps") or []):
+        return "playwright_execution"
+    return "generate_scripts"
+
+
+# Eight human-review interrupt gates, declared at compile time.
 # The graph pauses BEFORE each node listed here; the API resumes it after
 # the matching review_* field is written into state.
 _INTERRUPT_BEFORE = [
     "generate_hls",        # gate: review_requirements
     "generate_tcs",        # gate: review_hls
     "coverage_validation", # gate: review_tcs
-    "classify_tcs",        # gate: review_coverage
+    "write_jira",          # gate: review_jira  (Phase 1 end — preview before creating JIRA sub-tasks)
     "test_data_planning",  # gate: review_classifications
     "generate_scripts",    # gate: review_scripts
-    "write_jira",          # gate: review_report
+    "commit_github",       # gate: review_report (Phase 2 end — was write_jira)
 ]
 
 
@@ -53,10 +72,10 @@ def _compile(checkpointer):
     builder.add_node("generate_tcs", generate_tcs_node)
     builder.add_node("coverage_validation", coverage_validation_node)
     builder.add_node("classify_tcs", classify_tcs_node)
-    builder.add_node("test_data_planning", test_data_planning_node)
+    builder.add_node("test_data_planning", make_skippable_node(test_data_planning_node, "test_data_planning"))
     builder.add_node("generate_scripts", generate_scripts_node)
-    builder.add_node("playwright_execution", playwright_execution_node)
-    builder.add_node("hybrid_execution", hybrid_execution_node)
+    builder.add_node("playwright_execution", make_skippable_node(playwright_execution_node, "generate_scripts"))
+    builder.add_node("hybrid_execution", make_skippable_node(hybrid_execution_node, "execute_tests"))
     builder.add_node("report_generation", report_generation_node)
     builder.add_node("write_jira", write_jira_node)
     builder.add_node("commit_github", commit_github_node)
@@ -66,23 +85,29 @@ def _compile(checkpointer):
     # ── Entry point ──────────────────────────────────────────────────────
     builder.set_entry_point("fetch_ticket")
 
-    # ── Phase 1: requirements → test design (serialized, no branches) ────
+    # ── Phase 1: requirements → test design → write JIRA ────────────────
     builder.add_edge("fetch_ticket", "requirements_analysis")
     builder.add_edge("requirements_analysis", "generate_hls")
     builder.add_edge("generate_hls", "generate_tcs")
     builder.add_edge("generate_tcs", "coverage_validation")
-    builder.add_edge("coverage_validation", "classify_tcs")
+    builder.add_edge("coverage_validation", "write_jira")
+    builder.add_edge("write_jira", "classify_tcs")
     builder.add_edge("classify_tcs", "test_data_planning")
 
     # ── Phase 2: script generation → human gate → live execution ────────
-    builder.add_edge("test_data_planning", "generate_scripts")
+    # Conditional: skip straight to playwright_execution when generate_scripts is in skip_steps,
+    # bypassing the review_scripts interrupt_before gate entirely.
+    builder.add_conditional_edges(
+        "test_data_planning",
+        _skip_scripts_router,
+        {"generate_scripts": "generate_scripts", "playwright_execution": "playwright_execution"},
+    )
     builder.add_edge("generate_scripts", "playwright_execution")
     builder.add_edge("playwright_execution", "hybrid_execution")
 
     # ── Phase 2: reporting + outputs ─────────────────────────────────────
     builder.add_edge("hybrid_execution", "report_generation")
-    builder.add_edge("report_generation", "write_jira")
-    builder.add_edge("write_jira", "commit_github")
+    builder.add_edge("report_generation", "commit_github")
     builder.add_edge("commit_github", "send_email")
     builder.add_edge("send_email", END)
 
