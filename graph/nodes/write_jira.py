@@ -1,8 +1,6 @@
-"""write_jira_node — idempotent JIRA sub-task writer.
+"""write_jira_node — always-create JIRA sub-task writer.
 
-Idempotency key: ticket_id + tc_id (NOT run_id).
-Search → update existing OR create new sub-task for each TC.
-After all TCs: update parent ticket QA Status.
+Creates a new sub-task for each TC. No search, no update.
 """
 
 import os
@@ -20,108 +18,37 @@ _JIRA_EMAIL: str = os.getenv("JIRA_EMAIL", "")
 _JIRA_TOKEN: str = os.getenv("JIRA_API_TOKEN", "")
 
 
-# ── ADF helpers ───────────────────────────────────────────────────────────────
-
-def _adf_text(text: str) -> dict:
-    return {"type": "text", "text": text or " "}
-
-
-def _adf_para(text: str) -> dict:
-    return {"type": "paragraph", "content": [_adf_text(text)]}
-
-
-def _adf_cell(text: str, is_header: bool = False) -> dict:
-    cell_type = "tableHeader" if is_header else "tableCell"
-    return {"type": cell_type, "content": [_adf_para(text)]}
-
-
-def _adf_row(cells: list[str], is_header: bool = False) -> dict:
-    return {"type": "tableRow", "content": [_adf_cell(c, is_header) for c in cells]}
-
-
-def _build_description(tc: dict, result: Optional[dict], screenshot_url: Optional[str]) -> dict:
-    """Build ADF document: steps table + optional screenshot link."""
-    steps = tc.get("steps", [])
-    status = (result or {}).get("status", "not_run")
-
-    rows: list[dict] = [_adf_row(["Action", "Expected", "Status"], is_header=True)]
-    for i, step in enumerate(steps):
-        row_status = status if i == len(steps) - 1 else "—"
-        rows.append(_adf_row([step.get("action", ""), step.get("expected", ""), row_status]))
-
-    content: list[dict] = [
-        {"type": "table", "attrs": {"isNumberColumnEnabled": True}, "content": rows}
-    ]
-
-    if screenshot_url and status == "failed":
-        content.append(_adf_para(f"Screenshot: {screenshot_url}"))
-
-    return {"version": 1, "type": "doc", "content": content}
-
-
 # ── JIRA REST helpers ─────────────────────────────────────────────────────────
 
 def _check_redirect(resp: httpx.Response) -> None:
     if resp.status_code == 302:
         raise Exception("Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
 
-async def _search_subtask(
-    client: httpx.AsyncClient, ticket_id: str, tc_id: str
-) -> Optional[str]:
-    """Return the JIRA issue key of an existing sub-task, or None."""
-    jql = f'parent = "{ticket_id}" AND labels = "sdet-agent" AND summary ~ "{tc_id}"'
-    resp = await client.get(
-        f"{_JIRA_URL}/rest/api/2/issue/search",
-        headers=get_jira_headers(),
-        params={"jql": jql, "maxResults": 10, "fields": "summary"},
-    )
-    _check_redirect(resp)
-    resp.raise_for_status()
-    prefix = f"[SDET] {tc_id}"
-    for issue in resp.json().get("issues", []):
-        if issue.get("fields", {}).get("summary", "").startswith(prefix):
-            return issue["key"]
-    return None
+
+def _build_test_case_data(tc: dict) -> str:
+    lines = [f"Test Case: {tc.get('id', '')} — {tc.get('title', '')}"]
+    if tc.get("description"):
+        lines.append(f"Description: {tc['description']}")
+    for i, step in enumerate(tc.get("steps", []), 1):
+        lines.append(f"Step {i}: {step.get('action', '')}")
+        lines.append(f"  Expected: {step.get('expected', '')}")
+    return "\n".join(lines)
 
 
-def _issue_fields(
-    ticket_id: str,
-    tc: dict,
-    result: Optional[dict],
-    screenshot_url: Optional[str],
-    qa_status_field: Optional[str],
-    project_key: str,
-    functional_area: str,
-    *,
-    include_project: bool,
-) -> dict:
-    status = (result or {}).get("status", "not_run")
-    labels = ["sdet-agent"]
-    hls_id = tc.get("hls_id", "")
-    if hls_id:
-        labels.append(hls_id)
-
-    test_type = tc.get("test_type", "Functional")
-    if test_type not in ("Functional", "Integration"):
-        test_type = "Functional"
-
-    fields: dict = {
-        "summary": f"[SDET] {tc.get('id', '')} — {tc.get('title', '')}",
-        "description": _build_description(tc, result, screenshot_url),
-        "priority": {"name": tc.get("priority", "Medium")},
-        "labels": labels,
-        "customfield_14109": {"value": test_type},
-        "customfield_10300": [{"value": functional_area}],
+def _issue_fields(tc: dict, project_key: str) -> dict:
+    priority_map = {"high": "2", "medium": "3", "low": "4"}
+    summary = f"[SDET] {tc.get('id', '')} — {tc.get('title', '')}"
+    test_case_data_string = _build_test_case_data(tc)
+    priority_id = priority_map.get(tc.get("priority", "medium").lower(), "3")
+    return {
+        'project':            {'key': project_key},
+        'issuetype':          {'id': '11517'},
+        'summary':            summary,
+        'priority':           {'id': priority_id},
+        'customfield_21000':  {'id': '22702'},      # Not Executed
+        'customfield_14109':  {'id': '14401'},      # Functional
+        'customfield_30200':  test_case_data_string,  # plain string
     }
-    if include_project:
-        subtask_type = os.getenv("JIRA_SUBTASK_TYPE", "Sub-task")
-        fields["project"] = {"key": project_key}
-        fields["parent"] = {"key": ticket_id}
-        fields["issuetype"] = {"name": subtask_type}
-    if qa_status_field and status:
-        fields[qa_status_field] = {"value": status}
-
-    return fields
 
 
 async def _create_subtask(
@@ -134,7 +61,8 @@ async def _create_subtask(
     project_key: str,
     functional_area: str,
 ) -> str:
-    fields = _issue_fields(ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area, include_project=True)
+    fields = _issue_fields(tc, project_key)
+    print(f"[JIRA] fields dict: {fields}")
     resp = await client.post(
         f"{_JIRA_URL}/rest/api/2/issue",
         headers=get_jira_headers(),
@@ -142,28 +70,20 @@ async def _create_subtask(
     )
     _check_redirect(resp)
     resp.raise_for_status()
-    return resp.json()["key"]
+    new_issue_key: str = resp.json()["key"]
 
-
-async def _update_subtask(
-    client: httpx.AsyncClient,
-    issue_key: str,
-    ticket_id: str,
-    tc: dict,
-    result: Optional[dict],
-    screenshot_url: Optional[str],
-    qa_status_field: Optional[str],
-    project_key: str,
-    functional_area: str,
-) -> None:
-    fields = _issue_fields(ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area, include_project=False)
-    resp = await client.put(
-        f"{_JIRA_URL}/rest/api/2/issue/{issue_key}",
+    # Link the new TC issue back to the parent ticket
+    link_resp = await client.post(
+        f"{_JIRA_URL}/rest/api/2/issueLink",
         headers=get_jira_headers(),
-        json={"fields": fields},
+        json={
+            'type':         {'name': 'Covers'},
+            'outwardIssue': {'key': new_issue_key},
+            'inwardIssue':  {'key': ticket_id},
+        },
     )
-    _check_redirect(resp)
-    resp.raise_for_status()
+    _check_redirect(link_resp)
+    return new_issue_key
 
 
 async def _link_requirements(
@@ -232,21 +152,17 @@ async def write_jira_node(state: AgentState) -> AgentState:
                         break
 
             try:
-                existing_key = await _search_subtask(client, ticket_id, tc_id)
-                if existing_key:
-                    await _update_subtask(client, existing_key, ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area)
-                    issue_key = existing_key
-                    action = "updated"
-                else:
-                    issue_key = await _create_subtask(client, ticket_id, tc, result, screenshot_url, qa_status_field, project_key, functional_area)
-                    action = "created"
-
+                issue_key = await _create_subtask(
+                    client, ticket_id, tc, result, screenshot_url,
+                    qa_status_field, project_key, functional_area,
+                )
+                print(f"[JIRA] Created {issue_key} for {tc_id}")
                 await _link_requirements(client, issue_key, tc.get("linked_requirements", []))
-                written.append({"tc_id": tc_id, "issue_key": issue_key, "action": action})
-            except Exception as exc:
-                err_detail = exc.response.text if hasattr(exc, "response") else str(exc)
-                print(f"[JIRA] ERROR for {tc_id}: {err_detail[:400]}")
-                written.append({"tc_id": tc_id, "issue_key": None, "error": str(exc)[:200]})
+                written.append({"tc_id": tc_id, "issue_key": issue_key, "action": "created"})
+            except Exception as e:
+                error_body = getattr(getattr(e, "response", None), "text", str(e))
+                print(f"[JIRA] FULL ERROR for {tc.get('id', '?')}: {error_body}")
+                written.append({"tc_id": tc_id, "issue_key": None, "error": str(e)[:200]})
 
     latency_ms = int((time.monotonic() - t0) * 1000)
     await log_node_event(

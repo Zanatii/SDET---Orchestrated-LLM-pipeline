@@ -1027,6 +1027,25 @@ async def jira_link_types():
     ]
 
 
+# Temporary: return raw createmeta for TRKDJP sub-task field discovery.
+@app.get("/jira/createmeta")
+async def jira_createmeta():
+    url = f"{_jira_base_url()}/rest/api/2/issue/createmeta"
+    params = {
+        "projectKeys": "TRKDJP",
+        "issuetypeIds": "11517",
+        "expand": "projects.issuetypes.fields",
+    }
+    print(f"[CREATEMETA] Calling: {url} with params {params}")
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        resp = await client.get(url, headers=get_jira_headers(), params=params)
+    if resp.status_code == 302:
+        raise HTTPException(status_code=401, detail="Jira auth failed — check JIRA_API_TOKEN and JIRA_AUTH_TYPE=bearer in .env")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
 # Return all feedback_log rows for a run, grouped by node.
 @app.get("/feedback/runs/{run_id}")
 async def feedback_for_run(run_id: str):
