@@ -26,12 +26,22 @@ def _check_redirect(resp: httpx.Response) -> None:
 
 
 def _build_test_case_data(tc: dict) -> str:
-    lines = [f"Test Case: {tc.get('id', '')} — {tc.get('title', '')}"]
-    if tc.get("description"):
-        lines.append(f"Description: {tc['description']}")
-    for i, step in enumerate(tc.get("steps", []), 1):
-        lines.append(f"Step {i}: {step.get('action', '')}")
-        lines.append(f"  Expected: {step.get('expected', '')}")
+    lines = []
+
+    preconditions = tc.get("preconditions") or []
+    if preconditions:
+        lines.append("Preconditions:")
+        for pre in preconditions:
+            lines.append(f" * {pre}")
+        lines.append("")
+
+    lines.append("||Test Step||Test Data||Expected Result||")
+    for step in tc.get("steps", []):
+        action   = step.get("action", "")
+        td       = step.get("test_data") or ""
+        expected = step.get("expected", "")
+        lines.append(f"|{action}|{td}|{expected}|")
+
     return "\n".join(lines)
 
 

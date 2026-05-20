@@ -1,6 +1,11 @@
 import json
+import os
 import re
 import time
+
+import httpx
+
+PROXI_URL = os.getenv("PROXI_URL", "http://localhost:3001")
 
 from pydantic import ValidationError  # noqa: F401 — propagates through with_retry
 
@@ -107,6 +112,23 @@ def _append_hls_exp(items: list[dict]) -> list[dict]:
 # ── Node ───────────────────────────────────────────────────────────────────────
 
 async def generate_hls_node(state: AgentState) -> AgentState:
+    if state.get("provider") == "proxi":
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(
+                f"{PROXI_URL}/api/sdet/hls",
+                json={
+                    "ticket_id": state["ticket_id"],
+                    "requirements_analysis": state["requirements_analysis"],
+                }
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            if not payload.get("success"):
+                raise ValueError(f"Proxi HLS failed: {payload.get('error')}")
+            result = payload["data"]
+            hls_list = _append_hls_exp(result["hls_list"])
+            return {"hls_list": hls_list}
+
     t0 = time.monotonic()
     requirements_analysis = state.get("requirements_analysis") or {}
     changed_ids: list = state.get("changed_hls_ids") or []

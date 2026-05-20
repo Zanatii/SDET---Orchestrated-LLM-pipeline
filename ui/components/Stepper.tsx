@@ -214,7 +214,7 @@ export default function Stepper({
           const fbCount = state ? feedbackCount(state, step.feedbackNodeKey) : 0;
           const isViewing = step.gate !== null && step.gate === viewingGate;
           const isSkipped = !!(step.skipKey && state?.skip_steps?.includes(step.skipKey));
-          const isClickable = !isSkipped && !!onStepClick && step.gate !== null && (
+          const isClickable = !isSkipped && !!onStepClick && step.gate !== null && !isProcessing && (
             (isDone && VIEWABLE_GATES.has(step.gate)) ||
             (isActive && viewingGate != null)
           );

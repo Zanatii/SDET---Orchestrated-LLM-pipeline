@@ -11,6 +11,7 @@ interface TcPanelProps {
   hlsItems?: { id: string; title: string }[];
   showValidation?: boolean;
   orphanedTcIds?: Set<string>;
+  draftSaved?: boolean;
 }
 
 type PriorityFilter = "all" | "critical" | "high" | "medium" | "low";
@@ -52,6 +53,8 @@ function TcCard({
   reqIds,
   showValidation,
   isOrphaned,
+  isChecked,
+  onToggleCheck,
 }: {
   tc: TCItem;
   editMode: boolean;
@@ -62,6 +65,8 @@ function TcCard({
   reqIds?: string[];
   showValidation?: boolean;
   isOrphaned?: boolean;
+  isChecked?: boolean;
+  onToggleCheck?: () => void;
 }) {
   const [expanded, setExpanded] = useState(isNew ?? false);
   const [confirming, setConfirming] = useState(false);
@@ -71,7 +76,7 @@ function TcCard({
   }
 
   function handleAddStep() {
-    onChange({ ...tc, steps: [...tc.steps, { action: "", expected: "" }] });
+    onChange({ ...tc, steps: [...tc.steps, { action: "", test_data: "", expected: "" }] });
   }
 
   function handleDeleteStep(stepIdx: number) {
@@ -114,9 +119,14 @@ function TcCard({
       className="rounded-xl overflow-hidden transition-all"
       style={{
         background: isNew ? "rgba(34,197,94,0.03)" : "#0e1726",
-        border:    isOrphaned ? "1px solid rgba(245,158,11,0.4)" : "1px solid rgba(255,255,255,0.06)",
-        borderTop: isOrphaned ? "1px solid rgba(245,158,11,0.4)" : "1px solid rgba(255,255,255,0.08)",
-        ...(isNew ? { borderLeft: "3px solid rgba(34,197,94,0.5)" } : {}),
+        border:    isOrphaned ? "1px solid rgba(245,158,11,0.4)" : isChecked ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(255,255,255,0.06)",
+        borderTop: isOrphaned ? "1px solid rgba(245,158,11,0.4)" : isChecked ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(255,255,255,0.08)",
+        borderLeft: isChecked
+          ? "3px solid rgba(239,68,68,0.6)"
+          : isNew
+            ? "3px solid rgba(34,197,94,0.5)"
+            : undefined,
+        opacity: isChecked ? 0.7 : 1,
       }}
     >
       {/* Header / collapse toggle */}
@@ -126,6 +136,17 @@ function TcCard({
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
       >
+        {/* Bulk delete checkbox */}
+        {editMode && onToggleCheck && (
+          <input
+            type="checkbox"
+            checked={isChecked ?? false}
+            onChange={onToggleCheck}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer mt-0.5"
+            style={{ accentColor: "#ef4444" }}
+          />
+        )}
         <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
           <span className="font-mono text-xs font-bold px-2 py-0.5 rounded shrink-0" style={{ background: "rgba(157,110,247,0.1)", color: "#9d6ef7", border: "1px solid rgba(157,110,247,0.2)" }}>
             {tc.id}
@@ -386,6 +407,7 @@ function TcCard({
                   <tr style={{ background: "rgba(8,13,20,0.5)" }}>
                     <th className="text-left px-3 py-2 w-6 text-[11px] font-semibold" style={{ color: "rgba(107,114,128,0.6)" }}>#</th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold" style={{ color: "rgba(107,114,128,0.6)" }}>Action</th>
+                    <th className="text-left px-3 py-2 text-[11px] font-semibold" style={{ color: "rgba(107,114,128,0.6)" }}>Test Data</th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold" style={{ color: "rgba(107,114,128,0.6)" }}>Expected</th>
                     {editMode && <th className="w-8" />}
                   </tr>
@@ -404,6 +426,21 @@ function TcCard({
                           />
                         ) : (
                           <span className="text-xs text-text/80">{step.action}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {editMode ? (
+                          <input
+                            className="w-full rounded px-2 py-1 text-xs focus:outline-none"
+                            style={{ background: "rgba(8,13,20,0.5)", border: "1px solid rgba(157,110,247,0.3)", color: "#9d6ef7" }}
+                            value={step.test_data ?? ""}
+                            placeholder="input data…"
+                            onChange={(e) => handleStepChange(si, "test_data", e.target.value)}
+                          />
+                        ) : (
+                          <span className="text-xs font-mono" style={{ color: step.test_data ? "#9d6ef7" : "rgba(107,114,128,0.3)" }}>
+                            {step.test_data || "—"}
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -458,9 +495,10 @@ function TcCard({
   );
 }
 
-export default function TcPanel({ tcList, editMode, onItemsChange, reqIds, hlsItems, showValidation, orphanedTcIds }: TcPanelProps) {
+export default function TcPanel({ tcList, editMode, onItemsChange, reqIds, hlsItems, showValidation, orphanedTcIds, draftSaved }: TcPanelProps) {
   const [filter, setFilter] = useState<PriorityFilter>("all");
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const current = new Set(tcList.map((t) => t.id));
@@ -470,6 +508,33 @@ export default function TcPanel({ tcList, editMode, onItemsChange, reqIds, hlsIt
       return new Set([...prev].filter((id) => current.has(id)));
     });
   }, [tcList]);
+
+  useEffect(() => {
+    if (!editMode) setCheckedIds(new Set());
+  }, [editMode]);
+
+  const allChecked = tcList.length > 0 && tcList.every((t) => checkedIds.has(t.id));
+
+  function handleToggleCheck(id: string) {
+    setCheckedIds((prev) => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  }
+
+  function handleSelectAll() {
+    if (allChecked) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(tcList.map((t) => t.id)));
+    }
+  }
+
+  function handleBulkDelete() {
+    onItemsChange(tcList.filter((t) => !checkedIds.has(t.id)));
+    setCheckedIds(new Set());
+  }
 
   function nextId(): string {
     const nums = tcList
@@ -521,6 +586,18 @@ export default function TcPanel({ tcList, editMode, onItemsChange, reqIds, hlsIt
 
   return (
     <div className="flex flex-col gap-4 animate-fade-up">
+      {/* Draft saved banner */}
+      {draftSaved && (
+        <div
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg"
+          style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.22)" }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#f59e0b" }} />
+          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#f59e0b" }}>Draft Saved</span>
+          <span className="text-xs" style={{ color: "rgba(245,158,11,0.6)" }}>— review below and click Approve when ready</span>
+        </div>
+      )}
+
       {/* Filter tabs */}
       <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "rgba(17,24,39,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
         {filterTabs.map(({ key, label, color }) => {
@@ -548,6 +625,41 @@ export default function TcPanel({ tcList, editMode, onItemsChange, reqIds, hlsIt
         })}
       </div>
 
+      {/* Bulk delete toolbar */}
+      {editMode && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSelectAll}
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+            style={{
+              background: allChecked ? "rgba(29,200,184,0.15)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${allChecked ? "rgba(29,200,184,0.35)" : "rgba(255,255,255,0.1)"}`,
+              color: allChecked ? "#1dc8b8" : "#8896a8",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(29,200,184,0.12)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = allChecked ? "rgba(29,200,184,0.15)" : "rgba(255,255,255,0.04)"; }}
+          >
+            {allChecked ? "Deselect All" : "Select All"}
+          </button>
+
+          {checkedIds.size > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors"
+              style={{
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.3)",
+                color: "#ef4444",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.18)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
+            >
+              Delete Selected ({checkedIds.size})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* TC list */}
       <div className="flex flex-col gap-2">
         {filtered.map((tc) => {
@@ -565,6 +677,8 @@ export default function TcPanel({ tcList, editMode, onItemsChange, reqIds, hlsIt
               reqIds={reqIds}
               showValidation={showValidation}
               onChange={(updated) => handleChange(originalIndex, updated)}
+              isChecked={checkedIds.has(tc.id)}
+              onToggleCheck={editMode ? () => handleToggleCheck(tc.id) : undefined}
             />
           );
         })}

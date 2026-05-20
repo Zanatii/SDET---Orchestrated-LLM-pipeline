@@ -14,6 +14,7 @@ from typing import Optional
 import asyncpg
 import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -605,15 +606,6 @@ async def resume_run(run_id: str, body: ResumeRunBody):
         current_state["node_providers"] = merged_node_providers
 
     if body.approved:
-        # ── Phase 2 coverage gate guard ──────────────────────────────────
-        if gate_node == "review_jira":
-            cov = current_state.get("coverage_report") or {}
-            if not cov.get("phase2_unlocked", True):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Phase 2 blocked — fix coverage gaps first",
-                )
-
         state_updates: dict = {gate_node: {"approved": True}}
 
         if gate_node == "review_scripts":
@@ -664,7 +656,6 @@ async def resume_run(run_id: str, body: ResumeRunBody):
             )
 
         await app.state.graph.aupdate_state(config, state_updates)
-        gate, snapshot_after = await _stream_until_interrupt(app.state.graph, None, config)
 
     else:
         # ── Rejected path ────────────────────────────────────────────────
@@ -695,24 +686,31 @@ async def resume_run(run_id: str, body: ResumeRunBody):
 
         rerun_as_node = _GATE_TO_RERUN_AS_NODE.get(gate_node)
         await app.state.graph.aupdate_state(config, state_updates, as_node=rerun_as_node)
-        gate, snapshot_after = await _stream_until_interrupt(app.state.graph, None, config)
 
-    # Refresh PENDING_GATES
-    PENDING_GATES.pop(run_id, None)
-    if gate:
-        PENDING_GATES[run_id] = _pending_gate_entry(ticket_id, gate)
+    async def _run_stream() -> None:
+        try:
+            gate, snapshot_after = await _stream_until_interrupt(app.state.graph, None, config)
+            PENDING_GATES.pop(run_id, None)
+            if gate:
+                PENDING_GATES[run_id] = _pending_gate_entry(ticket_id, gate)
+            await notify_client(run_id, {
+                "type": "gate_reached",
+                "interrupted_at": gate,
+                "state_snapshot": _mask_sensitive(snapshot_after),
+            })
+        except Exception:
+            logger.exception("Graph stream failed after resume for run %s", run_id)
+            await notify_client(run_id, {
+                "type": "error",
+                "message": "Graph stream failed",
+            })
 
-    await notify_client(run_id, {
-        "type": "gate_reached",
-        "interrupted_at": gate,
-        "state_snapshot": _mask_sensitive(snapshot_after),
-    })
+    asyncio.create_task(_run_stream())
 
-    return {
-        "run_id": run_id,
-        "interrupted_at": gate,
-        "state_snapshot": _mask_sensitive(snapshot_after),
-    }
+    return JSONResponse(
+        status_code=202,
+        content={"run_id": run_id, "status": "resuming"},
+    )
 
 
 # Return the full AgentState for a run, with sensitive fields masked.

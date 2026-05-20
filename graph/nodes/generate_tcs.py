@@ -1,6 +1,11 @@
 import json
+import os
 import re
 import time
+
+import httpx
+
+PROXI_URL = os.getenv("PROXI_URL", "http://localhost:3001")
 
 from pydantic import ValidationError  # noqa: F401 — propagates through with_retry
 
@@ -124,6 +129,23 @@ def _validate_hls_ids(tcs: list[TCItem], valid_hls_ids: set) -> None:
 # ── Node ───────────────────────────────────────────────────────────────────────
 
 async def generate_tcs_node(state: AgentState) -> AgentState:
+    if state.get("provider") == "proxi":
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(
+                f"{PROXI_URL}/api/sdet/tcs",
+                json={
+                    "ticket_id": state["ticket_id"],
+                    "requirements_analysis": state["requirements_analysis"],
+                    "hls_list": state["hls_list"],
+                }
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            if not payload.get("success"):
+                raise ValueError(f"Proxi TCs failed: {payload.get('error')}")
+            result = payload["data"]
+            return {"tc_list": result["tc_list"]}
+
     t0 = time.monotonic()
     hls_list: list = state.get("hls_list") or []
     requirements_analysis: dict = state.get("requirements_analysis") or {}

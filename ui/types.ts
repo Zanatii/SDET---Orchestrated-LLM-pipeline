@@ -15,6 +15,7 @@ export interface HLSItem {
 
 export interface TCStep {
   action: string;
+  test_data: string;
   expected: string;
 }
 
@@ -27,6 +28,7 @@ export interface TCItem {
   steps: TCStep[];
   priority: string;
   type: string;
+  test_type: string;
 }
 
 export interface ReviewDecision {
@@ -37,7 +39,7 @@ export interface ReviewDecision {
 
 export interface AgentState {
   ticket_id: string;
-  provider: "claude" | "groq" | "grok";
+  provider: "claude" | "groq" | "grok" | "proxi";
   run_id: string;
   ticket_data: Record<string, unknown> | null;
   requirements_analysis: {

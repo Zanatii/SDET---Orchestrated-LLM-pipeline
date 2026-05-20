@@ -30,9 +30,31 @@ def _adf_to_text(node: Optional[dict | str]) -> str:
     return sep.join(p for p in parts if p)
 
 
+def _wiki_table_to_text(wiki_text: str) -> str:
+    """Convert Jira wiki markup tables to readable plain text."""
+    lines = re.split(r"\r\n|\n", wiki_text)
+    cleaned = []
+    for line in lines:
+        if line.startswith("||"):
+            parts = [p.strip() for p in line.split("||") if p.strip()]
+            cleaned.append(" | ".join(parts))
+        elif line.startswith("|"):
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            cleaned.append(" | ".join(parts))
+        else:
+            cleaned.append(line)
+    result = "\n".join(cleaned)
+    result = re.sub(r"\{color(?::[^}]*)?\}", "", result)
+    result = result.replace("*", "")
+    return result
+
+
 def _extract_ac(fields: dict) -> str:
     """Check common custom field IDs for Acceptance Criteria, then fall back
     to scraping an 'Acceptance Criteria' section from the description."""
+    val_11200 = fields.get("customfield_11200")
+    if val_11200:
+        return _wiki_table_to_text(str(val_11200))
     for key in ("customfield_10016", "customfield_10014", "customfield_10500"):
         val = fields.get(key)
         if val:

@@ -1,6 +1,9 @@
 import json
+import os
 import re
 import time
+
+import httpx
 
 from pydantic import ValidationError  # noqa: F401 — imported so with_retry catches it
 
@@ -12,6 +15,8 @@ from agent.prompts import requirements_analysis as prompts
 from agent.feedback_retriever import get_feedback_examples
 from agent.safe_parse_json import safe_parse_json
 from graph.state import AgentState
+
+PROXI_URL = os.getenv("PROXI_URL", "http://localhost:3001")
 
 
 def _build_prompt(ticket_data: dict, feedback_examples: str = "") -> str:
@@ -55,6 +60,24 @@ def _to_markdown(output: RequirementsOutput) -> str:
 
 
 async def requirements_analysis_node(state: AgentState) -> AgentState:
+    if state.get("provider") == "proxi":
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            resp = await client.post(
+                f"{PROXI_URL}/api/sdet/analyze",
+                json={
+                    "ticket_id": state["ticket_id"],
+                    "ticket_data": state["ticket_data"],
+                },
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            if not result.get("success"):
+                raise ValueError(f"Proxi analyze failed: {result.get('error', 'unknown')}")
+            return {
+                "requirements_analysis": result["data"]["requirements_analysis"],
+                "requirements": result["data"]["requirements"],
+            }
+
     t0 = time.monotonic()
     ticket_data = state.get("ticket_data") or {}
     start_retries = state.get("req_retry_count", 0)

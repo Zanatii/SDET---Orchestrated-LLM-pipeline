@@ -21,6 +21,9 @@ interface GateActionBarProps {
   onEditModeToggle: () => void;
   onApprove: (projectName?: string) => void;
   onReject: (feedback: string) => void;
+  draftSaved?: boolean;
+  onSaveDraft?: () => void;
+  onEditAgain?: () => void;
 }
 
 export default function GateActionBar({
@@ -30,6 +33,9 @@ export default function GateActionBar({
   onEditModeToggle,
   onApprove,
   onReject,
+  draftSaved,
+  onSaveDraft,
+  onEditAgain,
 }: GateActionBarProps) {
   const [showReject, setShowReject] = useState(false);
   const [rejectText, setRejectText] = useState("");
@@ -42,8 +48,13 @@ export default function GateActionBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isScriptsGate = gate === "review_scripts";
-  const approveLabel = APPROVE_LABELS[gate] ?? "Approve";
-  const gateLabel = gate.replace(/^review_/, "").replace(/_/g, " ").toUpperCase();
+  const isReqsGate    = gate === "review_requirements";
+  const approveLabel  = APPROVE_LABELS[gate] ?? "Approve";
+  const gateLabel     = gate.replace(/^review_/, "").replace(/_/g, " ").toUpperCase();
+
+  // Save Draft replaces "Approve with edits" when onSaveDraft is wired; Approve is the final action
+  const isSaveDraftMode = editMode && !!onSaveDraft;
+  const isDraftApproveMode = !!draftSaved && !editMode;
 
   async function fetchProjects(): Promise<string[]> {
     try {
@@ -109,12 +120,44 @@ export default function GateActionBar({
   }
 
   function handleApproveClick() {
+    // Save Draft path — requirements gate in edit mode
+    if (isSaveDraftMode) {
+      onSaveDraft!();
+      return;
+    }
+    // Normal approve path
     if (isScriptsGate && !projectName.trim()) {
       setProjectNameWarning("No project name entered — scripts will be saved under default");
     } else {
       setProjectNameWarning("");
     }
     onApprove(isScriptsGate ? projectName.trim() || undefined : undefined);
+  }
+
+  // Approve button label and style
+  let approveBtnLabel: string;
+  let approveBtnStyle: React.CSSProperties;
+  if (isSaveDraftMode) {
+    approveBtnLabel = "Save Draft";
+    approveBtnStyle = {
+      background: "linear-gradient(135deg, #f59e0b, #d97706)",
+      color: "#fff",
+      boxShadow: "0 2px 12px rgba(245,158,11,0.3)",
+    };
+  } else if (isDraftApproveMode) {
+    approveBtnLabel = "Approve";
+    approveBtnStyle = {
+      background: "linear-gradient(135deg, #22c55e, #16a34a)",
+      color: "#fff",
+      boxShadow: "0 2px 12px rgba(34,197,94,0.3)",
+    };
+  } else {
+    approveBtnLabel = editMode ? "Approve with edits" : approveLabel;
+    approveBtnStyle = {
+      background: "linear-gradient(135deg, #1dc8b8, #0fb3a4)",
+      color: "#fff",
+      boxShadow: "0 2px 12px rgba(29,200,184,0.3)",
+    };
   }
 
   return (
@@ -235,33 +278,57 @@ export default function GateActionBar({
         <div className="flex items-center gap-2">
           <div
             className="w-1.5 h-1.5 rounded-full animate-pulse"
-            style={{ background: "#1dc8b8" }}
+            style={{ background: isDraftApproveMode ? "#f59e0b" : "#1dc8b8" }}
           />
           <span className="text-[11px] font-mono tracking-widest" style={{ color: "#8896a8" }}>
-            AWAITING REVIEW · {gateLabel}
+            {isDraftApproveMode ? "DRAFT SAVED · " : "AWAITING REVIEW · "}{gateLabel}
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Edit button — always visible with label */}
-          <button
-            onClick={onEditModeToggle}
-            className="flex items-center gap-1.5 transition-all"
-            style={{
-              background: editMode ? "rgba(29,200,184,0.25)" : "rgba(29,200,184,0.15)",
-              border: `1px solid ${editMode ? "rgba(29,200,184,0.5)" : "rgba(29,200,184,0.4)"}`,
-              color: "#1dc8b8",
-              padding: "6px 12px",
-              borderRadius: 6,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(29,200,184,0.25)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = editMode ? "rgba(29,200,184,0.25)" : "rgba(29,200,184,0.15)"; }}
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-            </svg>
-            <span className="text-xs font-medium">{editMode ? "Editing" : "Edit"}</span>
-          </button>
+          {/* Edit button — hidden in draft-approve mode (Edit Again serves this role) */}
+          {!isDraftApproveMode && (
+            <button
+              onClick={onEditModeToggle}
+              className="flex items-center gap-1.5 transition-all"
+              style={{
+                background: editMode ? "rgba(29,200,184,0.25)" : "rgba(29,200,184,0.15)",
+                border: `1px solid ${editMode ? "rgba(29,200,184,0.5)" : "rgba(29,200,184,0.4)"}`,
+                color: "#1dc8b8",
+                padding: "6px 12px",
+                borderRadius: 6,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(29,200,184,0.25)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = editMode ? "rgba(29,200,184,0.25)" : "rgba(29,200,184,0.15)"; }}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
+              <span className="text-xs font-medium">{editMode ? "Editing" : "Edit"}</span>
+            </button>
+          )}
+
+          {/* Edit Again — only in draft-approve mode */}
+          {isDraftApproveMode && onEditAgain && (
+            <button
+              onClick={onEditAgain}
+              className="flex items-center gap-1.5 transition-all"
+              style={{
+                background: "rgba(29,200,184,0.12)",
+                border: "1px solid rgba(29,200,184,0.3)",
+                color: "#1dc8b8",
+                padding: "6px 12px",
+                borderRadius: 6,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(29,200,184,0.22)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(29,200,184,0.12)"; }}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
+              <span className="text-xs font-medium">Edit Again</span>
+            </button>
+          )}
 
           <button
             onClick={() => setShowReject((s) => !s)}
@@ -280,15 +347,11 @@ export default function GateActionBar({
           <button
             onClick={handleApproveClick}
             className="px-4 py-1.5 text-sm font-semibold rounded-lg transition-all"
-            style={{
-              background: "linear-gradient(135deg, #1dc8b8, #0fb3a4)",
-              color: "#fff",
-              boxShadow: "0 2px 12px rgba(29,200,184,0.3)",
-            }}
+            style={approveBtnStyle}
             onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
           >
-            {editMode ? "Approve with edits" : approveLabel}
+            {approveBtnLabel}
           </button>
         </div>
       </div>

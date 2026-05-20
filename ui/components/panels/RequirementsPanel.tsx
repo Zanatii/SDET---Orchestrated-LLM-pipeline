@@ -11,6 +11,7 @@ interface RequirementsPanelProps {
   editMode: boolean;
   onItemsChange: (items: REQItem[]) => void;
   showValidation?: boolean;
+  draftSaved?: boolean;
 }
 
 const TYPE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
@@ -128,9 +129,11 @@ export default function RequirementsPanel({
   editMode,
   onItemsChange,
   showValidation,
+  draftSaved,
 }: RequirementsPanelProps) {
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const current = new Set(requirements.map((r) => r.id));
@@ -141,9 +144,37 @@ export default function RequirementsPanel({
     });
   }, [requirements]);
 
-  const funcCount      = requirements.filter((r) => r.type.toLowerCase() === "functional").length;
-  const nonFuncCount   = requirements.filter((r) => ["non_functional", "non-functional"].includes(r.type.toLowerCase())).length;
+  // Clear checkboxes when leaving edit mode
+  useEffect(() => {
+    if (!editMode) setCheckedIds(new Set());
+  }, [editMode]);
+
+  const funcCount       = requirements.filter((r) => r.type.toLowerCase() === "functional").length;
+  const nonFuncCount    = requirements.filter((r) => ["non_functional", "non-functional"].includes(r.type.toLowerCase())).length;
   const constraintCount = requirements.filter((r) => r.type.toLowerCase() === "constraint").length;
+
+  const allChecked = requirements.length > 0 && requirements.every((r) => checkedIds.has(r.id));
+
+  function handleToggleCheck(id: string) {
+    setCheckedIds((prev) => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  }
+
+  function handleSelectAll() {
+    if (allChecked) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(requirements.map((r) => r.id)));
+    }
+  }
+
+  function handleBulkDelete() {
+    onItemsChange(requirements.filter((r) => !checkedIds.has(r.id)));
+    setCheckedIds(new Set());
+  }
 
   function nextId(): string {
     const nums = requirements
@@ -179,6 +210,18 @@ export default function RequirementsPanel({
 
   return (
     <div className="flex flex-col gap-5 animate-fade-up">
+      {/* Draft saved banner */}
+      {draftSaved && (
+        <div
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg"
+          style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.22)" }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#f59e0b" }} />
+          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#f59e0b" }}>Draft Saved</span>
+          <span className="text-xs" style={{ color: "rgba(245,158,11,0.6)" }}>— review below and click Approve when ready</span>
+        </div>
+      )}
+
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-3">
         <StatCard label="Total"          value={requirements.length} color="#f9fafb" />
@@ -189,11 +232,47 @@ export default function RequirementsPanel({
 
       {/* Requirements list */}
       <div className="flex flex-col gap-2.5">
+        {/* Bulk delete toolbar */}
+        {editMode && (
+          <div className="flex items-center gap-2 pb-1">
+            <button
+              onClick={handleSelectAll}
+              className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+              style={{
+                background: allChecked ? "rgba(29,200,184,0.15)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${allChecked ? "rgba(29,200,184,0.35)" : "rgba(255,255,255,0.1)"}`,
+                color: allChecked ? "#1dc8b8" : "#8896a8",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(29,200,184,0.12)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = allChecked ? "rgba(29,200,184,0.15)" : "rgba(255,255,255,0.04)"; }}
+            >
+              {allChecked ? "Deselect All" : "Select All"}
+            </button>
+
+            {checkedIds.size > 0 && (
+              <button
+                onClick={handleBulkDelete}
+                className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors"
+                style={{
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.3)",
+                  color: "#ef4444",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.18)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
+              >
+                Delete Selected ({checkedIds.size})
+              </button>
+            )}
+          </div>
+        )}
+
         {requirements.map((req, i) => {
           const isNew        = newIds.has(req.id);
           const style        = typeStyle(req.type);
           const textInvalid  = showValidation && isNew && !req.text.trim();
           const isConfirming = confirming === req.id;
+          const isChecked    = checkedIds.has(req.id);
 
           return (
             <div
@@ -202,12 +281,28 @@ export default function RequirementsPanel({
               style={{
                 background:  isNew ? "rgba(34,197,94,0.03)" : "#0e1726",
                 border:      "1px solid rgba(255,255,255,0.06)",
-                borderLeft:  isNew ? "3px solid rgba(34,197,94,0.5)" : `3px solid ${style.color}`,
+                borderLeft:  isChecked
+                  ? "3px solid rgba(239,68,68,0.6)"
+                  : isNew
+                    ? "3px solid rgba(34,197,94,0.5)"
+                    : `3px solid ${style.color}`,
                 borderTop:   "1px solid rgba(255,255,255,0.08)",
+                opacity:     isChecked ? 0.7 : 1,
               }}
             >
               {/* Header row */}
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Bulk delete checkbox */}
+                {editMode && (
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => handleToggleCheck(req.id)}
+                    className="shrink-0 w-3.5 h-3.5 rounded cursor-pointer accent-red-500"
+                    style={{ accentColor: "#ef4444" }}
+                  />
+                )}
+
                 <span className="font-mono text-xs font-bold px-2 py-0.5 rounded" style={{ background: "rgba(29,200,184,0.1)", color: "#1dc8b8", border: "1px solid rgba(29,200,184,0.2)" }}>
                   {req.id}
                 </span>

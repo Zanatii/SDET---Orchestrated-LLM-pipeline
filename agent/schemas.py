@@ -35,6 +35,7 @@ class HLSOutput(_Base):
 
 class TCStep(_Base):
     action: str
+    test_data: str = ""
     expected: str
 
 

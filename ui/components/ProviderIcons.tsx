@@ -32,9 +32,28 @@ export const GrokIcon = ({ size = 14 }: { size?: number }) => (
   </svg>
 );
 
+export const ProxiIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="2"   fill="#a855f7" />
+    <path d="M12,12 C10,8 7,4 4,2"        stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="4"  cy="2"  r="1.5" fill="#a855f7" />
+    <path d="M12,12 C14,8 17,4 20,2"      stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="20" cy="2"  r="1.5" fill="#a855f7" />
+    <path d="M12,12 C9,11 5,11 2,12"      stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="2"  cy="12" r="1.5" fill="#a855f7" />
+    <path d="M12,12 C15,11 19,11 22,12"   stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="22" cy="12" r="1.5" fill="#a855f7" />
+    <path d="M12,12 C10,16 7,20 4,22"     stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="4"  cy="22" r="1.5" fill="#a855f7" />
+    <path d="M12,12 C14,16 17,20 20,22"   stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="20" cy="22" r="1.5" fill="#a855f7" />
+  </svg>
+);
+
 export function ProviderIcon({ p, size }: { p: Provider; size?: number }) {
   if (p === "claude") return <ClaudeIcon size={size} />;
   if (p === "groq")   return <GroqIcon size={size} />;
+  if (p === "proxi")  return <ProxiIcon size={size} />;
   return <GrokIcon size={size} />;
 }
 
@@ -42,4 +61,5 @@ export const PROVIDER_COLORS: Record<Provider, { color: string; bg: string; bord
   claude: { color: "#D97706", bg: "rgba(217,119,6,0.15)",   border: "rgba(217,119,6,0.35)"   },
   groq:   { color: "#22c55e", bg: "rgba(34,197,94,0.15)",   border: "rgba(34,197,94,0.35)"   },
   grok:   { color: "#3b82f6", bg: "rgba(59,130,246,0.15)",  border: "rgba(59,130,246,0.35)"  },
+  proxi:  { color: "#a855f7", bg: "rgba(168,85,247,0.15)",  border: "rgba(168,85,247,0.35)"  },
 };

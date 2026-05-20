@@ -2,14 +2,15 @@
 
 import { ProviderIcon, PROVIDER_COLORS } from "@/components/ProviderIcons";
 
-export type Provider = "claude" | "groq" | "grok";
+export type Provider = "claude" | "groq" | "grok" | "proxi";
 
 export type ProviderStatus = "home" | "running" | "gate" | "done";
 
 const PROVIDER_META: Record<Provider, { label: string; sublabel?: string }> = {
-  claude: { label: "Claude"                  },
-  groq:   { label: "Groq",  sublabel: "free" },
-  grok:   { label: "Grok",  sublabel: "xAI"  },
+  claude: { label: "Claude"                      },
+  groq:   { label: "Groq",  sublabel: "free"     },
+  grok:   { label: "Grok",  sublabel: "xAI"      },
+  proxi:  { label: "Proxi"                        },
 };
 
 interface HeaderProps {
@@ -95,7 +96,7 @@ export default function Header({
 
       {/* Right: provider selector */}
       <div className="w-[220px] shrink-0 flex items-center justify-end gap-0.5">
-          {(["claude", "groq", "grok"] as Provider[]).map((p) => {
+          {(["claude", "groq", "grok", "proxi"] as Provider[]).map((p) => {
             const meta = PROVIDER_META[p];
             const clr = PROVIDER_COLORS[p];
             const isActive = provider === p;

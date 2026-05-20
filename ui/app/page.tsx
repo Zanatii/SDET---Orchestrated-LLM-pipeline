@@ -185,7 +185,7 @@ function AzureIcon() {
 
 export default function Page() {
   // --- Existing state (unchanged) ---
-  const [provider, setProvider] = useState<Provider>("claude");
+  const [provider, setProvider] = useState<Provider>("proxi");
   const [nodeProviders, setNodeProviders] = useState<Record<string, string>>({});
   const [ticketInput, setTicketInput] = useState("");
   const [runId, setRunId] = useState<string | null>(null);
@@ -196,6 +196,9 @@ export default function Page() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const [editMode, setEditMode] = useState(false);
+  const [reqDraftSaved, setReqDraftSaved] = useState(false);
+  const [hlsDraftSaved, setHlsDraftSaved] = useState(false);
+  const [tcDraftSaved, setTcDraftSaved] = useState(false);
   const [jiraSelectedTcIds, setJiraSelectedTcIds] = useState<string[] | null>(null);
   const [editedReqs, setEditedReqs] = useState<REQItem[] | null>(null);
   const [editedHls, setEditedHls] = useState<HLSItem[] | null>(null);
@@ -204,6 +207,7 @@ export default function Page() {
   const [orphanedTcIds, setOrphanedTcIds] = useState<Set<string>>(new Set());
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const grokWarnedRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const runIdRef = useRef<string | null>(null);
@@ -378,6 +382,7 @@ export default function Page() {
           setCurrentGate(data.interrupted_at);
           setRunState(data.state_snapshot);
           setIsLoading(false);
+          setIsProcessing(false);
         }
         if (data.type === "node_completed") {
           const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -422,6 +427,9 @@ export default function Page() {
   useEffect(() => {
     setViewingGate(null);
     setEditMode(false);
+    setReqDraftSaved(false);
+    setHlsDraftSaved(false);
+    setTcDraftSaved(false);
     setEditedReqs(null);
     setEditedHls(null);
     setEditedTcs(null);
@@ -580,11 +588,11 @@ export default function Page() {
     }
   }
 
-  function buildEdits(): { items: unknown[] } | undefined {
-    if (!editMode) return undefined;
-    if (currentGate === "review_requirements" && editedReqs) return { items: editedReqs };
-    if (currentGate === "review_hls" && editedHls) return { items: editedHls };
-    if (currentGate === "review_tcs" && editedTcs) return { items: editedTcs };
+  function buildEdits() {
+    if (!editMode && !reqDraftSaved && !hlsDraftSaved && !tcDraftSaved) return undefined;
+    if (currentGate === "review_requirements" && editedReqs) return { requirements: editedReqs };
+    if (currentGate === "review_hls" && editedHls)           return { hls_list: editedHls };
+    if (currentGate === "review_tcs" && editedTcs)           return { tc_list: editedTcs };
     return undefined;
   }
 
@@ -696,6 +704,10 @@ export default function Page() {
         return;
       }
     }
+    const snapReqs = editedReqs;
+    const snapHls = editedHls;
+    const snapTcs = editedTcs;
+    setIsProcessing(true);
     const prevGate = currentGate;
     setLoading(true);
     setIsLoading(true);
@@ -704,7 +716,7 @@ export default function Page() {
     try {
       const resolvedProjectName = prevGate === "review_scripts" ? (projectName || null) : null;
       const resolvedJiraIds = prevGate === "review_jira" && editMode ? (jiraSelectedTcIds ?? null) : null;
-      const { interrupted_at, state_snapshot } = await apiResume(
+      await apiResume(
         runId,
         prevGate,
         true,
@@ -715,14 +727,8 @@ export default function Page() {
         resolvedJiraIds,
       );
       addActivity(`Approved ${prevGate.replace("review_", "")}${editMode ? " with edits" : ""}`, "action");
-      setIsLoading(false);
-      setRunState(state_snapshot);
-      setCurrentGate(interrupted_at);
-      if (!interrupted_at) isCompletedRef.current = true;
     } catch (e) {
-      setIsLoading(false);
-      setCurrentGate(prevGate);
-      handleResumeError(e);
+      console.warn("apiResume failed:", e);
     } finally {
       setLoading(false);
     }
@@ -1274,7 +1280,7 @@ export default function Page() {
             state={runState}
             currentGate={currentGate}
             completedNodes={completedNodes}
-            isProcessing={isLoading}
+            isProcessing={isProcessing || isLoading}
             viewingGate={viewingGate}
             onStepClick={(gate) => {
               if (gate === currentGate) setViewingGate(null);
@@ -1427,6 +1433,7 @@ export default function Page() {
                 editMode={!isViewOnly && editMode}
                 onItemsChange={onReqsChange}
                 showValidation={showValidation}
+                draftSaved={reqDraftSaved}
               />
             )}
 
@@ -1437,6 +1444,7 @@ export default function Page() {
                 onItemsChange={onHlsChange}
                 reqIds={runState?.requirements_analysis?.requirements?.map((r) => r.id) ?? []}
                 showValidation={showValidation}
+                draftSaved={hlsDraftSaved}
               />
             )}
 
@@ -1449,6 +1457,7 @@ export default function Page() {
                 hlsItems={runState?.hls_list?.map((h) => ({ id: h.id, title: h.title })) ?? []}
                 showValidation={showValidation}
                 orphanedTcIds={orphanedTcIds}
+                draftSaved={tcDraftSaved}
               />
             )}
 
@@ -1590,6 +1599,19 @@ export default function Page() {
               onEditModeToggle={() => { setEditMode((m) => !m); setShowValidation(false); }}
               onApprove={handleApprove}
               onReject={handleReject}
+              draftSaved={currentGate === "review_requirements" && reqDraftSaved}
+              onSaveDraft={
+                currentGate === "review_requirements" ? () => { setReqDraftSaved(true); setEditMode(false); } :
+                currentGate === "review_hls"          ? () => { setHlsDraftSaved(true); setEditMode(false); } :
+                currentGate === "review_tcs"          ? () => { setTcDraftSaved(true);  setEditMode(false); } :
+                undefined
+              }
+              onEditAgain={
+                currentGate === "review_requirements" ? () => { setReqDraftSaved(false); setEditMode(true); } :
+                currentGate === "review_hls"          ? () => { setHlsDraftSaved(false); setEditMode(true); } :
+                currentGate === "review_tcs"          ? () => { setTcDraftSaved(false);  setEditMode(true); } :
+                undefined
+              }
             />
           )}
         </div>
