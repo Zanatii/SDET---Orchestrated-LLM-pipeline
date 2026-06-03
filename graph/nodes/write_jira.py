@@ -4,6 +4,7 @@ Creates a new sub-task for each TC. No search, no update.
 """
 
 import os
+import re
 import time
 from typing import Optional
 
@@ -37,17 +38,45 @@ def _build_test_case_data(tc: dict) -> str:
 
     lines.append("||Test Step||Test Data||Expected Result||")
     for step in tc.get("steps", []):
-        action   = step.get("action", "")
-        td       = step.get("test_data") or ""
-        expected = step.get("expected", "")
+        action   = (step.get("action")   or "").replace("\n", " ")
+        td       = (step.get("test_data") or "").replace("\n", " ")
+        expected = (step.get("expected") or "").replace("\n", " ")
         lines.append(f"|{action}|{td}|{expected}|")
 
     return "\n".join(lines)
 
 
+_VERIFY_KEYWORDS = {
+    "displays", "shows", "appears", "visible", "loads",
+    "renders", "navigates", "opens", "closes",
+}
+
+_VALIDATE_KEYWORDS = {
+    "accepts", "rejects", "allows", "prevents", "enforces", "requires",
+    "fails", "blocks", "restricts", "calculates", "saves", "submits", "returns",
+}
+
+
+def _build_summary(tc: dict) -> str:
+    raw = tc.get("title", "")
+    # Strip "[SDET]" prefix if already present, then any "TC-XXX —/:/- " prefix
+    clean = re.sub(r"^\[SDET\]\s*", "", raw)
+    clean = re.sub(r"^TC-\d+\s*[—\-:]+\s*", "", clean).strip()
+
+    words = set(re.sub(r"[^a-z\s]", "", clean.lower()).split())
+    if words & _VALIDATE_KEYWORDS:
+        prefix = "Validate"
+    elif words & _VERIFY_KEYWORDS:
+        prefix = "Verify"
+    else:
+        prefix = "Verify"
+
+    return f"{prefix} {clean}"
+
+
 def _issue_fields(tc: dict, project_key: str) -> dict:
     priority_map = {"high": "2", "medium": "3", "low": "4"}
-    summary = f"[SDET] {tc.get('id', '')} — {tc.get('title', '')}"
+    summary = _build_summary(tc)
     test_case_data_string = _build_test_case_data(tc)
     priority_id = priority_map.get(tc.get("priority", "medium").lower(), "3")
     return {

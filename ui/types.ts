@@ -90,6 +90,25 @@ export interface PipelineStep {
   skipKey: string | null;
 }
 
+export interface DescriptionTextBlock {
+  type: "text";
+  content: string;
+}
+
+export interface DescriptionTableBlock {
+  type: "table";
+  headers: string[];
+  rows: string[][];
+}
+
+export type DescriptionBlock = DescriptionTextBlock | DescriptionTableBlock;
+
+export interface TicketComment {
+  author: string;
+  body: string;
+  created: string;
+}
+
 export const PIPELINE_STEPS: PipelineStep[] = [
   // Phase 1
   { id: "fetch_ticket",            label: "Fetch Ticket",          phase: 1, gate: null,                    outputKey: "ticket_data",            feedbackNodeKey: null,                    skipKey: null },

@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { REQItem, HLSItem, TCItem } from "@/types";
 
 interface CoveragePanelProps {
   coverageReport: Record<string, unknown>;
+  requirements?: REQItem[];
+  hlsList?: HLSItem[];
+  tcList?: TCItem[];
 }
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function DonutChart({ percentage }: { percentage: number }) {
   const r = 38;
@@ -59,9 +64,259 @@ function StatBadge({ label, value, color }: { label: string; value: string | num
   );
 }
 
-export default function CoveragePanel({ coverageReport }: CoveragePanelProps) {
-  const [showRaw, setShowRaw] = useState(false);
+// ── Matrix builder ────────────────────────────────────────────────────────────
 
+interface MatrixRow {
+  reqId: string;
+  reqText: string;
+  hlsId: string | null;
+  hlsTitle: string | null;
+  tcId: string | null;
+  tcTitle: string | null;
+  covered: boolean;
+  isFirstReqRow: boolean;
+  isFirstHlsRow: boolean;
+}
+
+function buildMatrix(
+  requirements: REQItem[],
+  hlsList: HLSItem[],
+  tcList: TCItem[],
+  uncoveredSet: Set<string>
+): MatrixRow[] {
+  const rows: MatrixRow[] = [];
+
+  for (const req of requirements) {
+    const covered = !uncoveredSet.has(req.id);
+    const linkedHls = hlsList.filter((h) => h.linked_requirements.includes(req.id));
+
+    if (linkedHls.length === 0) {
+      rows.push({ reqId: req.id, reqText: req.text, hlsId: null, hlsTitle: null, tcId: null, tcTitle: null, covered, isFirstReqRow: true, isFirstHlsRow: true });
+      continue;
+    }
+
+    let isFirstReqRow = true;
+    for (const hls of linkedHls) {
+      const linkedTcs = tcList.filter((t) => t.hls_id === hls.id);
+
+      if (linkedTcs.length === 0) {
+        rows.push({ reqId: req.id, reqText: req.text, hlsId: hls.id, hlsTitle: hls.title, tcId: null, tcTitle: null, covered, isFirstReqRow, isFirstHlsRow: true });
+        isFirstReqRow = false;
+        continue;
+      }
+
+      let isFirstHlsRow = true;
+      for (const tc of linkedTcs) {
+        rows.push({ reqId: req.id, reqText: req.text, hlsId: hls.id, hlsTitle: hls.title, tcId: tc.id, tcTitle: tc.title, covered, isFirstReqRow, isFirstHlsRow });
+        isFirstReqRow = false;
+        isFirstHlsRow = false;
+      }
+    }
+  }
+
+  return rows;
+}
+
+// ── Traceability matrix ───────────────────────────────────────────────────────
+
+function TraceabilityMatrix({
+  requirements,
+  hlsList,
+  tcList,
+  uncoveredSet,
+}: {
+  requirements: REQItem[];
+  hlsList: HLSItem[];
+  tcList: TCItem[];
+  uncoveredSet: Set<string>;
+}) {
+  if (requirements.length === 0) return null;
+
+  const rows = buildMatrix(requirements, hlsList, tcList, uncoveredSet);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p
+        className="text-[11px] font-semibold tracking-wider uppercase"
+        style={{ color: "rgba(107,114,128,0.6)" }}
+      >
+        Traceability Matrix
+      </p>
+
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+        <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "rgba(8,13,20,0.6)" }}>
+              {(["Requirement", "HLS", "Test Case", "Status"] as const).map((h) => (
+                <th
+                  key={h}
+                  className="text-left px-4 py-3 text-[11px] font-semibold tracking-wider"
+                  style={{ color: "rgba(107,114,128,0.6)", whiteSpace: "nowrap" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const isNewReqGroup = row.isFirstReqRow && i > 0;
+              const rowBorder = isNewReqGroup
+                ? "2px solid rgba(255,255,255,0.05)"
+                : "1px solid rgba(255,255,255,0.03)";
+
+              return (
+                <tr
+                  key={i}
+                  style={{
+                    borderTop: rowBorder,
+                    background: row.isFirstReqRow && i > 0
+                      ? "rgba(255,255,255,0.008)"
+                      : "transparent",
+                  }}
+                >
+                  {/* Requirement */}
+                  <td className="px-4 py-2.5" style={{ verticalAlign: "top", minWidth: 120 }}>
+                    {row.isFirstReqRow ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className="font-mono text-xs font-bold"
+                          style={{ color: "#1dc8b8" }}
+                        >
+                          {row.reqId}
+                        </span>
+                        <span
+                          className="text-[11px] leading-snug"
+                          style={{
+                            color: "rgba(221,228,239,0.55)",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            maxWidth: 200,
+                          }}
+                          title={row.reqText}
+                        >
+                          {row.reqText}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: "transparent" }}>·</span>
+                    )}
+                  </td>
+
+                  {/* HLS */}
+                  <td className="px-4 py-2.5" style={{ verticalAlign: "top", minWidth: 90 }}>
+                    {row.hlsId === null ? (
+                      <span style={{ color: "rgba(107,114,128,0.35)", fontSize: 13 }}>—</span>
+                    ) : row.isFirstHlsRow ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className="font-mono text-xs font-bold"
+                          style={{ color: "#9d6ef7" }}
+                        >
+                          {row.hlsId}
+                        </span>
+                        {row.hlsTitle && (
+                          <span
+                            className="text-[11px] leading-snug"
+                            style={{
+                              color: "rgba(221,228,239,0.45)",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              maxWidth: 180,
+                            }}
+                            title={row.hlsTitle}
+                          >
+                            {row.hlsTitle}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ color: "transparent" }}>·</span>
+                    )}
+                  </td>
+
+                  {/* Test Case */}
+                  <td className="px-4 py-2.5" style={{ verticalAlign: "top", minWidth: 90 }}>
+                    {row.tcId === null ? (
+                      <span style={{ color: "rgba(107,114,128,0.35)", fontSize: 13 }}>—</span>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className="font-mono text-xs font-bold"
+                          style={{ color: "#8896a8" }}
+                        >
+                          {row.tcId}
+                        </span>
+                        {row.tcTitle && (
+                          <span
+                            className="text-[11px] leading-snug"
+                            style={{
+                              color: "rgba(221,228,239,0.4)",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              maxWidth: 180,
+                            }}
+                            title={row.tcTitle}
+                          >
+                            {row.tcTitle}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Status — shown only on first row of each REQ group */}
+                  <td className="px-4 py-2.5" style={{ verticalAlign: "top", whiteSpace: "nowrap" }}>
+                    {row.isFirstReqRow ? (
+                      row.covered ? (
+                        <span
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-lg"
+                          style={{
+                            background: "rgba(34,197,94,0.1)",
+                            color: "#22c55e",
+                            border: "1px solid rgba(34,197,94,0.2)",
+                          }}
+                        >
+                          ✅ Covered
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-lg"
+                          style={{
+                            background: "rgba(239,68,68,0.1)",
+                            color: "#ef4444",
+                            border: "1px solid rgba(239,68,68,0.2)",
+                          }}
+                        >
+                          ❌ Uncovered
+                        </span>
+                      )
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────────
+
+export default function CoveragePanel({
+  coverageReport,
+  requirements = [],
+  hlsList = [],
+  tcList = [],
+}: CoveragePanelProps) {
   const pct = typeof coverageReport.coverage_percentage === "number"
     ? coverageReport.coverage_percentage
     : typeof coverageReport.coverage_percent === "number"
@@ -79,6 +334,7 @@ export default function CoveragePanel({ coverageReport }: CoveragePanelProps) {
     : 0);
 
   const isComplete = displayPct >= 100;
+  const uncoveredSet = new Set(uncoveredList);
 
   return (
     <div className="flex flex-col gap-5 animate-fade-up">
@@ -140,7 +396,7 @@ export default function CoveragePanel({ coverageReport }: CoveragePanelProps) {
         </div>
       )}
 
-      {/* Uncovered requirements */}
+      {/* Uncovered requirements pill list */}
       {uncoveredList.length > 0 && (
         <div>
           <p className="text-[11px] font-semibold tracking-wider uppercase mb-2" style={{ color: "rgba(107,114,128,0.6)" }}>
@@ -164,30 +420,15 @@ export default function CoveragePanel({ coverageReport }: CoveragePanelProps) {
         </div>
       )}
 
-      {/* Raw data toggle */}
-      <div>
-        <button
-          onClick={() => setShowRaw((s) => !s)}
-          className="text-xs transition-colors"
-          style={{ color: "rgba(107,114,128,0.5)" }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(107,114,128,0.8)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(107,114,128,0.5)"; }}
-        >
-          {showRaw ? "▲ hide raw data" : "▼ show raw data"}
-        </button>
-        {showRaw && (
-          <pre
-            className="mt-2 text-xs font-mono overflow-x-auto rounded-xl p-4 max-h-64"
-            style={{
-              background: "rgba(8,13,20,0.6)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              color: "rgba(107,114,128,0.8)",
-            }}
-          >
-            {JSON.stringify(coverageReport, null, 2)}
-          </pre>
-        )}
-      </div>
+      {/* Traceability matrix */}
+      {requirements.length > 0 && (
+        <TraceabilityMatrix
+          requirements={requirements}
+          hlsList={hlsList}
+          tcList={tcList}
+          uncoveredSet={uncoveredSet}
+        />
+      )}
     </div>
   );
 }

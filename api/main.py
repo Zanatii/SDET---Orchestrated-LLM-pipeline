@@ -527,6 +527,8 @@ class TestDataBody(BaseModel):
 # Start a new pipeline run for a JIRA ticket.
 @app.post("/runs/start")
 async def start_run(body: StartRunBody):
+    from graph.nodes.fetch_ticket import fetch_ticket_node as _fetch_ticket
+
     run_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": run_id}}
 
@@ -540,21 +542,45 @@ async def start_run(body: StartRunBody):
     print(f"[START] skip_steps received: {body.skip_steps}")
     print(f"[START] skip_steps in state: {initial_state['skip_steps']}")
 
-    gate, snapshot = await _stream_until_interrupt(app.state.graph, initial_state, config)
+    # Phase 1: Run fetch_ticket directly so we can return ticket data to the UI immediately.
+    after_fetch = await _fetch_ticket(initial_state)
 
-    if gate:
-        PENDING_GATES[run_id] = _pending_gate_entry(body.ticket_id, gate)
+    if after_fetch.get("error"):
+        return {
+            "run_id": run_id,
+            "interrupted_at": None,
+            "state_snapshot": _mask_sensitive(dict(after_fetch)),
+        }
 
-    await notify_client(run_id, {
-        "type": "gate_reached",
-        "interrupted_at": gate,
-        "state_snapshot": _mask_sensitive(snapshot),
-    })
+    # Seed the LangGraph checkpoint at the fetch_ticket boundary.
+    # as_node="fetch_ticket" tells LangGraph "fetch_ticket just completed",
+    # so the next continuation will run requirements_analysis.
+    await app.state.graph.aupdate_state(config, dict(after_fetch), as_node="fetch_ticket")
 
+    # Phase 2: Run requirements analysis + rest of pipeline in background.
+    # The UI will show FetchTicketPanel with a loading indicator until the
+    # WebSocket gate_reached event arrives.
+    async def _run_background() -> None:
+        try:
+            gate, snapshot = await _stream_until_interrupt(app.state.graph, None, config)
+            if gate:
+                PENDING_GATES[run_id] = _pending_gate_entry(body.ticket_id, gate)
+            await notify_client(run_id, {
+                "type": "gate_reached",
+                "interrupted_at": gate,
+                "state_snapshot": _mask_sensitive(snapshot),
+            })
+        except Exception:
+            logger.exception("Background pipeline failed for run %s", run_id)
+            await notify_client(run_id, {"type": "error", "message": "Pipeline failed after fetch"})
+
+    asyncio.create_task(_run_background())
+
+    # Return immediately with ticket data — requirements analysis runs in background.
     return {
         "run_id": run_id,
-        "interrupted_at": gate,
-        "state_snapshot": _mask_sensitive(snapshot),
+        "interrupted_at": None,
+        "state_snapshot": _mask_sensitive(dict(after_fetch)),
     }
 
 

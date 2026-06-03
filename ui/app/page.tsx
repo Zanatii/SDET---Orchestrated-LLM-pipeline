@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AgentState, HLSItem, REQItem, TCItem } from "@/types";
+import { AgentState, DescriptionBlock, HLSItem, REQItem, TCItem, TicketComment } from "@/types";
 import Header, { Provider } from "@/components/Header";
 import Stepper from "@/components/Stepper";
 import GateActionBar from "@/components/GateActionBar";
@@ -9,6 +9,7 @@ import RequirementsPanel from "@/components/panels/RequirementsPanel";
 import HlsPanel from "@/components/panels/HlsPanel";
 import TcPanel from "@/components/panels/TcPanel";
 import CoveragePanel from "@/components/panels/CoveragePanel";
+import FetchTicketPanel from "@/components/panels/FetchTicketPanel";
 import ToastContainer, { ToastItem } from "@/components/Toast";
 
 // ── AI node names (for global-toggle sync) ────────────────────────────────────
@@ -123,7 +124,9 @@ type TicketData = {
   summary?: string;
   type?: string;
   priority?: string;
-  description?: string;
+  description?: DescriptionBlock[];
+  acceptance_criteria?: string;
+  comments?: TicketComment[];
 };
 
 // ── Activity log ──────────────────────────────────────────────────────────────
@@ -223,6 +226,7 @@ export default function Page() {
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
   const [logOpen, setLogOpen] = useState(false);
   const [viewingGate, setViewingGate] = useState<string | null>(null);
+  const [viewingTicket, setViewingTicket] = useState(false);
   const [skipSteps, setSkipSteps] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showJiraSettings, setShowJiraSettings] = useState(false);
@@ -266,6 +270,7 @@ export default function Page() {
     setLoading(false);
     setEditMode(false);
     setViewingGate(null);
+    setViewingTicket(false);
     setUserCustomizedNodes(new Set());
     setOrphanedTcIds(new Set());
     setJiraSelectedTcIds(null);
@@ -426,6 +431,7 @@ export default function Page() {
 
   useEffect(() => {
     setViewingGate(null);
+    setViewingTicket(false);
     setEditMode(false);
     setReqDraftSaved(false);
     setHlsDraftSaved(false);
@@ -770,8 +776,8 @@ export default function Page() {
   const tcList   = (editedTcs ?? runState?.tc_list) as TCItem[] | undefined;
   const ticketData = runState?.ticket_data as TicketData | null | undefined;
   const displayGate = viewingGate ?? currentGate;
-  const isViewOnly = viewingGate !== null;
-  const displayGateMeta = displayGate ? GATE_META[displayGate] : null;
+  const isViewOnly = viewingGate !== null || viewingTicket;
+  const displayGateMeta = displayGate && !viewingTicket ? GATE_META[displayGate] : null;
   const gateMeta = currentGate ? GATE_META[currentGate] : null;
 
   // ── Launch screen ─────────────────────────────────────────────────────────
@@ -1282,9 +1288,15 @@ export default function Page() {
             completedNodes={completedNodes}
             isProcessing={isProcessing || isLoading}
             viewingGate={viewingGate}
+            viewingTicket={viewingTicket}
             onStepClick={(gate) => {
+              setViewingTicket(false);
               if (gate === currentGate) setViewingGate(null);
               else setViewingGate((prev) => prev === gate ? null : gate);
+            }}
+            onFetchTicketClick={() => {
+              setViewingGate(null);
+              setViewingTicket((prev) => !prev);
             }}
           />
         </aside>
@@ -1386,6 +1398,54 @@ export default function Page() {
                 </button>
               )}
             </div>
+          ) : viewingTicket ? (
+            <div
+              className="shrink-0 px-7 py-4 flex items-center gap-4"
+              style={{
+                background: "rgba(15,24,41,0.5)",
+                borderBottom: "1px solid rgba(255,255,255,0.05)",
+              }}
+            >
+              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider"
+                    style={{ background: "rgba(29,200,184,0.1)", color: "#1dc8b8", border: "1px solid rgba(29,200,184,0.2)" }}
+                  >
+                    PHASE 1 · ANALYSIS
+                  </span>
+                  <span className="text-[11px] font-mono" style={{ color: "rgba(107,114,128,0.5)" }}>
+                    STEP 1 OF {TOTAL_STEPS}
+                  </span>
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-wider"
+                    style={{
+                      background: "rgba(245,158,11,0.1)",
+                      color: "#f59e0b",
+                      border: "1px solid rgba(245,158,11,0.2)",
+                      padding: "3px 10px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    VIEW ONLY
+                  </span>
+                </div>
+                <h1 className="text-xl font-bold text-text leading-tight">Fetch Ticket</h1>
+                <p className="text-sm text-muted">Jira ticket details</p>
+              </div>
+              <button
+                onClick={() => setViewingTicket(false)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{ background: "rgba(255,255,255,0.04)", color: "#f9fafb", border: "1px solid rgba(255,255,255,0.1)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z" clipRule="evenodd" />
+                </svg>
+                Back to current
+              </button>
+            </div>
           ) : (
             <div
               className="shrink-0 px-7 py-4"
@@ -1423,8 +1483,13 @@ export default function Page() {
 
           {/* Scrollable content body */}
           <div className="flex-1 overflow-y-auto px-7 py-6">
+            {/* Fetch Ticket view — overrides all other panels */}
+            {viewingTicket && ticketData && (
+              <FetchTicketPanel ticketId={runState!.ticket_id} data={ticketData as TicketData} />
+            )}
+
             {/* Gate panels — rendered for displayGate (active or viewed) */}
-            {displayGate === "review_requirements" && reqs && (
+            {!viewingTicket && displayGate === "review_requirements" && reqs && (
               <RequirementsPanel
                 requirements={reqs}
                 ambiguities={runState?.requirements_analysis?.ambiguities ?? []}
@@ -1437,7 +1502,7 @@ export default function Page() {
               />
             )}
 
-            {displayGate === "review_hls" && hlsList && (
+            {!viewingTicket && displayGate === "review_hls" && hlsList && (
               <HlsPanel
                 hlsList={hlsList}
                 editMode={!isViewOnly && editMode}
@@ -1448,7 +1513,7 @@ export default function Page() {
               />
             )}
 
-            {displayGate === "review_tcs" && tcList && (
+            {!viewingTicket && displayGate === "review_tcs" && tcList && (
               <TcPanel
                 tcList={tcList}
                 editMode={!isViewOnly && editMode}
@@ -1461,11 +1526,16 @@ export default function Page() {
               />
             )}
 
-            {displayGate === "review_coverage" && runState?.coverage_report && (
-              <CoveragePanel coverageReport={runState.coverage_report} />
+            {!viewingTicket && displayGate === "review_coverage" && runState?.coverage_report && (
+              <CoveragePanel
+                coverageReport={runState.coverage_report}
+                requirements={runState.requirements_analysis?.requirements as REQItem[] | undefined}
+                hlsList={runState.hls_list as HLSItem[] | undefined}
+                tcList={runState.tc_list as TCItem[] | undefined}
+              />
             )}
 
-            {displayGate === "review_jira" && runState?.tc_list && (
+            {!viewingTicket && displayGate === "review_jira" && runState?.tc_list && (
               <WriteJiraPanel
                 tcList={runState.tc_list}
                 ticketData={runState.ticket_data as TicketData | null}
@@ -1475,25 +1545,25 @@ export default function Page() {
               />
             )}
 
-            {displayGate === "review_classifications" && runState?.tc_classifications && (
+            {!viewingTicket && displayGate === "review_classifications" && runState?.tc_classifications && (
               <ClassificationsView
                 data={runState.tc_classifications as Record<string, unknown>[]}
                 tcList={runState.tc_list as unknown as Record<string, unknown>[] | undefined}
               />
             )}
 
-            {displayGate === "review_scripts" && runState?.scripts_written && (
+            {!viewingTicket && displayGate === "review_scripts" && runState?.scripts_written && (
               <ScriptsView data={runState.scripts_written as Record<string, unknown>[]} />
             )}
 
-            {displayGate === "review_report" && runState?.report && (
+            {!viewingTicket && displayGate === "review_report" && runState?.report && (
               <ReportView data={runState.report} />
             )}
 
-            {/* Running / idle state — only when not viewing a past gate */}
-            {!displayGate && (
-              <div className="h-full flex items-center justify-center">
-                {runState?.error ? (
+            {/* Running / idle state — only when not viewing ticket or a gate */}
+            {!viewingTicket && !displayGate && (
+              runState?.error ? (
+                <div className="h-full flex items-center justify-center">
                   <div
                     className="max-w-md w-full rounded-xl p-6 flex flex-col gap-3"
                     style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}
@@ -1501,7 +1571,28 @@ export default function Page() {
                     <p className="text-sm font-semibold text-red">Pipeline Error</p>
                     <p className="text-sm text-muted leading-relaxed">{runState.error}</p>
                   </div>
-                ) : isLoading ? (
+                </div>
+              ) : ticketData && isLoading && !runState?.requirements_analysis ? (
+                /* Initial processing only — show panel while requirements analysis runs for the first time */
+                <div className="flex flex-col">
+                  <FetchTicketPanel ticketId={runState!.ticket_id} data={ticketData as TicketData} />
+                  <div className="mt-5 pb-4 flex flex-col gap-2">
+                    <div style={{ height: 2, borderRadius: 1, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                      <div
+                        className="animate-pulse h-full w-full"
+                        style={{ background: "linear-gradient(90deg, transparent 0%, rgba(29,200,184,0.55) 50%, transparent 100%)" }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ background: "#1dc8b8" }} />
+                      <span className="text-[11px] font-mono" style={{ color: "rgba(107,114,128,0.5)" }}>
+                        Analysing requirements…
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : isLoading ? (
+                <div className="h-full flex items-center justify-center">
                   <div className="flex flex-col items-center gap-4 text-center animate-fade-up">
                     <div className="relative w-12 h-12">
                       <div
@@ -1518,15 +1609,17 @@ export default function Page() {
                       <p className="text-xs text-muted">Pipeline is running…</p>
                     </div>
                   </div>
-                ) : ticketData ? (
-                  <TicketCard data={ticketData} />
-                ) : (
+                </div>
+              ) : ticketData ? (
+                <FetchTicketPanel ticketId={runState!.ticket_id} data={ticketData as TicketData} />
+              ) : (
+                <div className="h-full flex items-center justify-center">
                   <div className="flex flex-col items-center gap-3 text-center">
                     <div className="w-10 h-10 border-2 border-teal/30 border-t-teal rounded-full animate-spin-slow" />
                     <p className="text-sm text-muted">Waiting for pipeline…</p>
                   </div>
-                )}
-              </div>
+                </div>
+              )
             )}
           </div>
 
@@ -1621,92 +1714,6 @@ export default function Page() {
 }
 
 // ── Inline sub-components ─────────────────────────────────────────────────────
-
-function TicketCard({ data }: { data: TicketData }) {
-  const [expanded, setExpanded] = useState(false);
-  const desc = data.description ?? "";
-  const preview = desc.slice(0, 200);
-  const hasMore = desc.length > 200;
-
-  return (
-    <div
-      className="w-full max-w-md flex flex-col gap-4 rounded-2xl p-6 animate-fade-up"
-      style={{
-        background: "#0e1726",
-        border: "1px solid rgba(255,255,255,0.07)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-      }}
-    >
-      <div className="flex items-start gap-3 flex-wrap">
-        <span className="text-base font-semibold text-text flex-1 min-w-0">
-          {data.summary ?? "Ticket loaded"}
-        </span>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {data.type && (
-            <span
-              className="text-[10px] font-mono px-2 py-0.5 rounded"
-              style={{ background: "rgba(29,200,184,0.1)", color: "#1dc8b8", border: "1px solid rgba(29,200,184,0.2)" }}
-            >
-              {data.type}
-            </span>
-          )}
-          {data.priority && (
-            <span
-              className="text-[10px] font-mono px-2 py-0.5 rounded"
-              style={{
-                background:
-                  data.priority.toLowerCase() === "high" || data.priority.toLowerCase() === "critical"
-                    ? "rgba(239,68,68,0.1)"
-                    : data.priority.toLowerCase() === "medium"
-                    ? "rgba(245,158,11,0.1)"
-                    : "rgba(34,197,94,0.1)",
-                color:
-                  data.priority.toLowerCase() === "high" || data.priority.toLowerCase() === "critical"
-                    ? "#ef4444"
-                    : data.priority.toLowerCase() === "medium"
-                    ? "#f59e0b"
-                    : "#22c55e",
-                border:
-                  data.priority.toLowerCase() === "high" || data.priority.toLowerCase() === "critical"
-                    ? "1px solid rgba(239,68,68,0.25)"
-                    : data.priority.toLowerCase() === "medium"
-                    ? "1px solid rgba(245,158,11,0.25)"
-                    : "1px solid rgba(34,197,94,0.25)",
-              }}
-            >
-              {data.priority}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {desc && (
-        <p className="text-sm text-muted leading-relaxed">
-          {expanded ? desc : preview}
-          {hasMore && (
-            <button
-              onClick={() => setExpanded((e) => !e)}
-              className="ml-1 text-xs"
-              style={{ color: "#1dc8b8" }}
-            >
-              {expanded ? "show less" : "…show more"}
-            </button>
-          )}
-        </p>
-      )}
-
-      <div className="flex items-center gap-2 pt-1">
-        <span
-          className="text-[10px] font-semibold px-2.5 py-1 rounded"
-          style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.2)" }}
-        >
-          Fetched ✓
-        </span>
-        <span className="text-[11px] text-muted">Pipeline continuing…</span>
-      </div>
-    </div>
-  );
-}
 
 type ClassFilter = "all" | "automated" | "manual" | "hybrid";
 

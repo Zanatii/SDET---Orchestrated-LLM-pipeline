@@ -85,6 +85,8 @@ interface StepperProps {
   isProcessing?: boolean;
   viewingGate?: string | null;
   onStepClick?: (gate: string) => void;
+  onFetchTicketClick?: () => void;
+  viewingTicket?: boolean;
 }
 
 export default function Stepper({
@@ -93,6 +95,8 @@ export default function Stepper({
   isProcessing = false,
   viewingGate,
   onStepClick,
+  onFetchTicketClick,
+  viewingTicket,
 }: StepperProps) {
   const currentPhase = getCurrentPhase(state, currentGate);
   const phase2Reached = currentPhase === 2;
@@ -212,12 +216,15 @@ export default function Stepper({
           const isRejected = status === "rejected";
           const isShimmer = shimmerStepId === step.id;
           const fbCount = state ? feedbackCount(state, step.feedbackNodeKey) : 0;
-          const isViewing = step.gate !== null && step.gate === viewingGate;
+          const isFetchTicketStep = step.id === "fetch_ticket";
+          const isFetchTicketClickable = isFetchTicketStep && !!onFetchTicketClick && !isProcessing && isDone;
+          const isViewing = (step.gate !== null && step.gate === viewingGate) || (isFetchTicketStep && !!viewingTicket);
           const isSkipped = !!(step.skipKey && state?.skip_steps?.includes(step.skipKey));
           const isClickable = !isSkipped && !!onStepClick && step.gate !== null && !isProcessing && (
             (isDone && VIEWABLE_GATES.has(step.gate)) ||
-            (isActive && viewingGate != null)
+            (isActive && (viewingGate != null || !!viewingTicket))
           );
+          const isAnyClickable = isClickable || isFetchTicketClickable;
 
           // ── Skipped step ────────────────────────────────────────────────────
           if (isSkipped) {
@@ -313,17 +320,24 @@ export default function Stepper({
                   : isActive
                   ? (isPurple ? "rgba(157,110,247,0.05)" : "rgba(29,200,184,0.05)")
                   : "transparent",
-                cursor: isClickable ? "pointer" : "default",
+                cursor: isAnyClickable ? "pointer" : "default",
               }}
-              onClick={() => isClickable && step.gate && onStepClick(step.gate)}
+              onClick={() => {
+                if (isFetchTicketClickable) onFetchTicketClick!();
+                else if (isClickable && step.gate) onStepClick(step.gate);
+              }}
               onMouseEnter={(e) => {
-                if (isClickable && !isViewing && !isActive) {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                if (isAnyClickable && !isViewing) {
+                  e.currentTarget.style.background = isActive
+                    ? (isPurple ? "rgba(157,110,247,0.1)" : "rgba(29,200,184,0.1)")
+                    : "rgba(255,255,255,0.02)";
                 }
               }}
               onMouseLeave={(e) => {
-                if (isClickable && !isViewing && !isActive) {
-                  e.currentTarget.style.background = "transparent";
+                if (isAnyClickable && !isViewing) {
+                  e.currentTarget.style.background = isActive
+                    ? (isPurple ? "rgba(157,110,247,0.05)" : "rgba(29,200,184,0.05)")
+                    : "transparent";
                 }
               }}
             >
@@ -332,7 +346,15 @@ export default function Stepper({
                 className="shrink-0 flex items-center justify-center font-mono font-bold"
                 style={badgeStyle}
               >
-                {isDone ? <CheckIcon /> : isRejected ? "✕" : num}
+                {isDone ? <CheckIcon /> : isRejected ? "✕" : isShimmer ? (
+                  <span
+                    className="w-3 h-3 rounded-full animate-spin shrink-0"
+                    style={{
+                      border: `1.5px solid ${isPurple ? "rgba(157,110,247,0.3)" : "rgba(29,200,184,0.3)"}`,
+                      borderTopColor: isPurple ? "#9d6ef7" : "#1dc8b8",
+                    }}
+                  />
+                ) : num}
               </div>
 
               {/* Label + tags */}
@@ -395,7 +417,7 @@ export default function Stepper({
               </div>
 
               {/* Chevron hint for clickable steps */}
-              {isClickable && (
+              {isAnyClickable && (
                 <svg
                   className="w-3 h-3 shrink-0"
                   viewBox="0 0 20 20"
