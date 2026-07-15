@@ -130,13 +130,14 @@ def _validate_hls_ids(tcs: list[TCItem], valid_hls_ids: set) -> None:
 
 async def generate_tcs_node(state: AgentState) -> AgentState:
     if state.get("provider") == "proxi":
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(600.0)) as client:
             resp = await client.post(
                 f"{PROXI_URL}/api/sdet/tcs",
                 json={
                     "ticket_id": state["ticket_id"],
                     "requirements_analysis": state["requirements_analysis"],
                     "hls_list": state["hls_list"],
+                    "figma_images": state.get("figma_images") or [],
                 }
             )
             resp.raise_for_status()

@@ -67,6 +67,7 @@ async def requirements_analysis_node(state: AgentState) -> AgentState:
                 json={
                     "ticket_id": state["ticket_id"],
                     "ticket_data": state["ticket_data"],
+                    "figma_images": state.get("figma_images") or [],
                 },
             )
             resp.raise_for_status()

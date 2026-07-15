@@ -39,7 +39,9 @@ def _build_test_case_data(tc: dict) -> str:
     lines.append("||Test Step||Test Data||Expected Result||")
     for step in tc.get("steps", []):
         action   = (step.get("action")   or "").replace("\n", " ")
-        td       = (step.get("test_data") or "").replace("\n", " ")
+        td       = (step.get("test_data") or "").replace("\n", " ").strip()
+        if not td:
+            td = " "
         expected = (step.get("expected") or "").replace("\n", " ")
         lines.append(f"|{action}|{td}|{expected}|")
 

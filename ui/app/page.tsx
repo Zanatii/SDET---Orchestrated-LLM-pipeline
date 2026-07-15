@@ -154,6 +154,15 @@ const ACTIVITY_COLOR: Record<ActivityEntry["type"], string> = {
 
 const PIPELINE_STAGES = ["Fetch", "Analyze", "HLS", "TCs", "Scripts", "Execute", "Report"];
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function JiraIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24">
@@ -234,6 +243,8 @@ export default function Page() {
   const [jiraFunctionalArea, setJiraFunctionalArea] = useState("Dubai Justice Platform");
   const [showNewRunModal, setShowNewRunModal] = useState(false);
   const [userCustomizedNodes, setUserCustomizedNodes] = useState<Set<string>>(new Set());
+  const [figmaImages, setFigmaImages] = useState<string[]>([]);
+  const [figmaError, setFigmaError] = useState<string | null>(null);
 
   // --- Toast helpers ---
   const dismissToast = useCallback((id: string) => {
@@ -275,6 +286,8 @@ export default function Page() {
     setOrphanedTcIds(new Set());
     setJiraSelectedTcIds(null);
     setTicketInput("");
+    setFigmaImages([]);
+    setFigmaError(null);
   }
 
   // --- Handlers ---
@@ -337,6 +350,21 @@ export default function Page() {
     if (p === "grok") maybeWarnGrok();
     setUserCustomizedNodes((prev) => new Set([...prev, nodeName]));
     setNodeProviders((prev) => ({ ...prev, [nodeName]: p }));
+  }
+
+  async function handleFigmaUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const allowed = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+    const invalid = files.filter((f) => !allowed.has(f.type));
+    if (invalid.length > 0) {
+      setFigmaError(`Invalid file type(s): ${invalid.map((f) => f.name).join(", ")} — only PNG, JPG, JPEG, WEBP allowed.`);
+      e.target.value = "";
+      return;
+    }
+    setFigmaError(null);
+    const dataUrls = await Promise.all(files.map(fileToBase64));
+    setFigmaImages((prev) => [...prev, ...dataUrls]);
+    e.target.value = "";
   }
 
   // ── WebSocket helpers ─────────────────────────────────────────────────────
@@ -499,6 +527,7 @@ export default function Page() {
           skip_steps: skipSteps,
           jira_tc_project_key: jiraTcProjectKey,
           jira_functional_area: jiraFunctionalArea,
+          figma_images: figmaImages.map((url) => url.split(",")[1]),
         }),
       });
 
@@ -942,6 +971,69 @@ export default function Page() {
                 ) : null
               )}
 
+            </div>
+
+            {/* Figma / UI screenshot upload */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] font-semibold" style={{ color: "rgba(107,114,128,0.7)" }}>
+                Attach UI/Figma screenshots{" "}
+                <span style={{ color: "rgba(107,114,128,0.45)", fontWeight: 400 }}>(optional)</span>
+              </label>
+              <label
+                className="flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 text-[13px] transition-colors"
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px dashed rgba(255,255,255,0.12)",
+                  color: "rgba(136,150,168,0.8)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(29,200,184,0.3)";
+                  e.currentTarget.style.color = "rgba(29,200,184,0.8)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+                  e.currentTarget.style.color = "rgba(136,150,168,0.8)";
+                }}
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909-.48-.48a.75.75 0 00-1.06 0L2.5 11.06zm12-3.56a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+                </svg>
+                <span>Click to attach PNG, JPG, or WEBP</span>
+                <input
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  disabled={isLaunching}
+                  onChange={handleFigmaUpload}
+                />
+              </label>
+              {figmaError && (
+                <p className="text-[11px]" style={{ color: "#ef4444" }}>{figmaError}</p>
+              )}
+              {figmaImages.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {figmaImages.map((src, i) => (
+                    <div key={i} className="relative group" style={{ width: 64, height: 64 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt={`screenshot-${i}`}
+                        className="w-full h-full object-cover rounded-lg"
+                        style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFigmaImages((prev) => prev.filter((_, j) => j !== i))}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: "#ef4444", color: "#fff", lineHeight: 1, border: "none", cursor: "pointer" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Jira Settings */}

@@ -76,6 +76,7 @@ export interface AgentState {
   feedback_injected: Record<string, string> | null;
   node_providers: Record<string, string> | null;
   skip_steps: string[] | null;
+  figma_images: string[] | null;
 }
 
 export type StepStatus = "pending" | "active" | "approved" | "rejected" | "auto-approved";

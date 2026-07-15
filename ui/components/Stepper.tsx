@@ -220,9 +220,9 @@ export default function Stepper({
           const isFetchTicketClickable = isFetchTicketStep && !!onFetchTicketClick && !isProcessing && isDone;
           const isViewing = (step.gate !== null && step.gate === viewingGate) || (isFetchTicketStep && !!viewingTicket);
           const isSkipped = !!(step.skipKey && state?.skip_steps?.includes(step.skipKey));
-          const isClickable = !isSkipped && !!onStepClick && step.gate !== null && !isProcessing && (
+          const isClickable = !isSkipped && !!onStepClick && step.gate !== null && (
             (isDone && VIEWABLE_GATES.has(step.gate)) ||
-            (isActive && (viewingGate != null || !!viewingTicket))
+            (!isProcessing && isActive && (viewingGate != null || !!viewingTicket))
           );
           const isAnyClickable = isClickable || isFetchTicketClickable;
 

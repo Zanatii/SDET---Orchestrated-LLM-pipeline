@@ -48,3 +48,5 @@ class AgentState(TypedDict):
     jira_tc_project_key:    str
     jira_functional_area:   str
     jira_selected_tc_ids:   Optional[List[str]]
+    # Optional Figma/UI screenshots (base64-encoded, sent to Proxi)
+    figma_images:           Optional[List[str]]

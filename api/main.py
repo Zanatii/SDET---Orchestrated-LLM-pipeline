@@ -500,6 +500,7 @@ class StartRunBody(BaseModel):
     skip_steps: Optional[list] = None
     jira_tc_project_key: Optional[str] = None
     jira_functional_area: Optional[str] = None
+    figma_images: Optional[list] = None
 
 
 class ResumeRunBody(BaseModel):
@@ -538,6 +539,7 @@ async def start_run(body: StartRunBody):
     initial_state["skip_steps"] = body.skip_steps or []  # type: ignore[index]
     initial_state["jira_tc_project_key"] = body.jira_tc_project_key or ""  # type: ignore[index]
     initial_state["jira_functional_area"] = body.jira_functional_area or "Dubai Justice Platform"  # type: ignore[index]
+    initial_state["figma_images"] = body.figma_images or []  # type: ignore[index]
 
     print(f"[START] skip_steps received: {body.skip_steps}")
     print(f"[START] skip_steps in state: {initial_state['skip_steps']}")

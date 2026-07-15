@@ -41,4 +41,5 @@ def create_initial_state(ticket_id: str, run_id: str) -> AgentState:
         jira_tc_project_key='',
         jira_functional_area='Dubai Justice Platform',
         jira_selected_tc_ids=None,
+        figma_images=[],
     )
